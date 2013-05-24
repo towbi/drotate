@@ -1,0 +1,216 @@
+.TH DROTATE 1
+.SH NAME
+drotate \- archives and deletes (rotates) files and directories
+older than a given age 
+.SH SYNOPSIS
+If the directory to rotate is specified in the config file:
+
+.B drotate
+[\-d dir] [\-o dir] [\-a file] [\-i days] [\-c configfile] [\-m file]
+[\-psnfhv]
+
+Otherwise the `-d' option is mandatory:
+
+.B drotate
+.B \-d dir
+[\-o dir] [\-a file] [\-i days] [\-c configfile] [\-m file]
+[\-psnfhv]
+
+.SH DESCRIPTION
+.B drotate
+recursively finds all files and directories in a given directory
+older than a certain number of days and archives and deletes
+(rotates) them.
+It can be used to archive regularly accumulating files that
+don't need to be in direct access forever and can be archived
+after some time.
+.PP
+.B drotate
+can be automatically called on a daily/weekly/monthly basis
+but the rotation will only happen when the last rotation dates
+back a given amount of days. This prevents the creation of
+many small archives and allows periodic execution via cron.
+.SH OPTIONS
+Everything can be configured in a configuration file. The only
+mandatory parameter is the name of the directory
+.B drotate
+shall process. If you want to do without a configuration file,
+you have to pass at least the name of the directory to process
+with the `-d' option.
+.IP \-d\ dir
+specifies the directory to process. Everything in it will
+be considered for rotation. The directory itself and the
+contained state file will never be subject to rotation.
+.IP \-o\ dir
+specifies where to save the archive file. Default is to save
+the archive to the current directory.
+.IP \-a\ file
+specifies an alternate name for the resulting archive. See
+the
+.B DEFAULTS
+section on the default archive name.
+.IP \-i\ days
+tells
+.B drotate
+which interval to use for rotation. This serves two purposes. In
+the first place it specifies how old files and directories have
+to be in order for them to be rotated. At the same time this
+value determines if the rotation will take place at all (certain
+amount of time must have passed between two rotations).
+.IP \-g
+tests for access time instead of modification time when
+determining the age of a file.
+.IP \-p
+prepends the hostname to the archive filename.
+.IP \-c\ file
+reads an alternate/additional configuration file.
+.IP \-m\ file
+multiplex mode: reads given file which holds a list of drotate
+configuration files and starts a drotate instance for each one
+of them. drotate ignores any command line configuration in this mode.
+.IP \-n
+performs a dry run, i.e. doesn't touch
+anything and just to shows what would be done.
+.IP \-k
+keeps archived files, instead of deleting them.
+.IP \-f
+forces overwriting of an existing archive. Default is to
+terminate if an archive already exists.
+.IP \-s
+prevents
+.B drotate
+from descending into subdirectories
+.IP \-h
+displays help information. Verbosity can be increased by
+using the `-v' switch.
+.IP \-v
+increases verbosity.
+.SH CONFIGURATION
+.B drotate
+reads the configuration file at
+.B $HOME/.drotate.conf
+at startup if it exists.
+If additional configuration files are provided with the `-c'
+option, these are read in the provided order.
+.PP
+The definitions can be overridden by providing the appropriate
+options at runtime.
+.PP
+The configuration variables have to be set like this:
+
+.B VARIABLE=value
+
+Notice that some values need to be quoted.
+.PP
+.B drotate
+recognizes the following options (for a description see
+the
+.B OPTIONS
+section):
+.TP
+.B DIR
+specifies the directory to process.
+.TP
+.B ARCHDIR
+specifies where to save the archive file.
+.TP
+.B ARCHFILE
+specifies an alternate name for the resulting archive.
+.TP
+.B INTERVAL
+specifies the interval of rotation.
+.TP
+.B ACCESS
+tells drotate to test for access time instead of modification 
+time when determining the age of a file.
+.TP
+.B PREPEND
+tells drotate to prepend the hostname.
+.TP
+.B DRYRUN
+tells drotate to perform a dry run, i.e. not to touch
+anything and just to show what would be done.
+.TP
+.B KEEP
+tells drotate to keep archived files, instead of deleting them.
+.TP
+.B MULTPLEX
+puts drotate in multiplex mode, see `-m' above.
+.TP
+.B DESCEND
+whether to descend into subdirectories
+.TP
+.B OVERWRITE
+tells drotate to overwrite an existing archive.
+.TP
+.B LASTROTATEFILE
+tells drotate to use another name for the state file.
+.TP
+.B VERBOSE
+tells drotate to be verbose.
+.SH DEFAULTS
+.IP Interval
+The default interval is 150 days.
+.IP Archive\ filename
+The default archive filename has this format:
+
+.B     [HOSTNAME_]directory-path_YYYY-MM-DD_hh-mm.tar.gz  
+
+whereas the directory-path is specified by the `-d' switch
+or the DIR config file variable. YYYY-MM-DD_hh-mm reflects
+the current system time. If the hostname is to be prepended,
+it is determined by the `hostname' command.
+.IP Archive\ directory
+The default directory the archive file is saved to is
+the current working directory.
+.IP State\ file
+The default name of the state file is `.lastdrotate'. It
+is saved in the directory to process.
+.IP Prepending\ of\ hostname
+The default is no to prepend the hostname.
+.SH EXIT STATUS
+.B drotate
+exits with status 0 if the rotation completed successfully. It
+exits with 1 if an operating error occurred and with 2 if one
+of the backend tools exited unexpectedly. If the archive file
+already exists but drotate must not overwrite it, it exits with 3.
+.SH BACKEND TOOLS
+drotate requires the following backend tools to work:
+.TP
+*
+find, to find files to rotate
+.TP
+*
+mktemp, to create temporary files
+.TP
+*
+tr, to process lists of filenames delimited by the NULL character
+.TP
+*
+sed, to create a nice default archive name
+.TP
+*
+pwd, to get the current working directory if $PWD isn't set
+.TP
+*
+cat, to output the list of filenames
+.TP
+*
+tac, to output the list of directories in reverse order
+.TP
+*
+hostname, to get the hostname of the system
+.TP
+*
+wc, to count the number of directories and files to be processed
+.PP
+The availability of the following tools is optional but recommended:
+.TP
+*
+tput, to get the number of columns if $COLUMNS isn't set
+.TP
+*
+fold, to prevent line-breaks within word-boundaries
+.SH AUTHOR
+Tobias Nissen <tn@movb.de>
+

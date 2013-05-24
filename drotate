@@ -1,0 +1,536 @@
+#!/bin/bash
+#
+# drotate - archives and deletes files older a given age
+#
+# Copyright 2008-2010 Tobias Mahnke-Nissen <tn@movb.de>
+#
+#   This program is free software: you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation, either version 3 of the License, or
+#   (at your option) any later version.
+#
+#   This program is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+#
+#   You should have received a copy of the GNU General Public License
+#   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+# See usage() for program description.
+#
+# Depends on: find, mktemp, tr, sed, pwd, cat, tac, wc
+# Recommends: tput, fold, hostname
+
+NAME='drotate'
+VERSION='0.9.7'
+: ${PWD:=$(pwd)}
+STARTDIR="$PWD"
+
+# some defaults
+VERBOSE=0
+DRYRUN=0
+ACCESS=0
+OVERWRITE=0
+PREPEND=0
+DESCEND=1
+KEEP=0
+CUSTOMARCH=0
+JUSTSHOWHELP=0
+
+CONFIG='~/.drotate.conf'
+ARCHDIR="$PWD"
+LASTROTATEFILE='.lastdrotate'
+INTERVAL=150 # number of days that must have passed since last rotation
+
+FOLDCMD='fold'
+GETCOLUMNSCMD='tput cols'
+
+#
+# FUNCTIONS
+#
+
+# nodigit STRING
+#
+# Returns 0 if STRING contains non-digit characters, 1 otherwise.
+nodigit ()
+{
+  [ $# -eq 1 ] || return 0
+  case $1 in
+    *[!0-9]*|"") return 0;;
+    *) return 1;;
+  esac
+}
+
+# usage
+#
+# Prints out usage information
+usage ()
+{
+  echo "Usage: $NAME [options]"
+  echo
+  vecho "$NAME version $VERSION, 2008-2010 Tobias Nissen <tn@movb.de>\n\n"
+  echo "$NAME archives all files in a given directory that are older than a given number of days and deletes those files." | $FOLD
+  echo
+  vecho "In order not to produce a bunch of small archives, $NAME refuses to run, if not at least a given number of days (adjustable with INTERVAL) has passed since the last execution. Therefore it is OK to run it once a week via cron or the like.\n\n" | $FOLD
+  echo "$NAME's only mandatory parameter is a directory to run on, which can be set in a config file" | $FOLD
+  vecho "The default interval is 150 days; the default archive file name consists of the directory name and the current timestamp.\n\n" | $FOLD
+  vecho "Everything can be configured in a config file. The order of command line arguments determines how a parameter is set. Example:\n\t$NAME -c drotate.conf -i 20\nNo matter how drotate.conf sets INTERVAL, the value 20 is used.\n" | $FOLD
+
+  echo
+  echo "Options:"
+  echo "    -d DIR      Rotate files in DIR (instead of '$DIR')" | $FOLD
+  echo "    -h          Show help (more help with -v)"
+  echo "    -c FILE     Read configuration from FILE instead of '$CONFIG'" | $FOLD
+  echo "    -m FILE     Read FILE which holds a list of drotate configuration files" | $FOLD
+  echo "    -v          Be verbose (can be supplied multiple times to increase verbosity)" | $FOLD
+  echo "    -n          Don't actually rotate, just show what would be done (implies -v)" | $FOLD
+  echo "    -k          Keep archived files, don't delete them"
+  echo "    -o DIR      Save archive in DIR (instead of current directory)"
+  echo "    -a ARCH     Use ARCH as filename for archive"
+  echo "    -i INTRVL   Set the interval to INTRVL (instead of $INTERVAL)" | $FOLD
+  echo "    -g          Check access time instead of modification time"
+  echo "    -s          Don't descend into subdirectories"
+  echo "    -f          Overwrite an existing archive"
+  echo "    -p          Prepend hostname to archive filename"
+  echo
+}
+
+# vecho MESSAGE
+#
+# echoes MESSAGE if $VERBOSE is 1 or higher
+vecho ()
+{
+  if [ $VERBOSE -ge 1 ]; then
+    printf "%b" "$*"
+  fi
+}
+
+# vvecho MESSAGE
+#
+# echoes MESSAGE if $VERBOSE is 2 or higher
+vvecho ()
+{
+  if [ $VERBOSE -ge 2 ]; then
+    printf "%b" "$*"
+  fi
+}
+
+
+# quit EXITCODE
+#
+# changes to original working dir, deletes temporary files and exits
+# with exit code EXITCODE
+quit ()
+{
+  cd $STARTDIR
+  if [ -e "$FILELIST" ]; then
+    vvecho "Deleting file list '$FILELIST'.\n"
+    rm "$FILELIST"
+  fi
+  if [ -e "$DIRLIST" ]; then
+    vvecho "Deleting directory list '$DIRLIST'.\n"
+    rm "$DIRLIST"
+  fi
+  exit $1
+}
+
+# build_archive_filename DIR
+#
+# creates an intelligent filename for the archive of the form
+#   [HOSTNAME_]directory-path_YYYY-MM-DD_hh-mm.tar.gz
+build_archive_filename ()
+{
+  if [ -z "$ARCH" ]; then
+    # Replace every non-alphanumerical character with - and delete leading
+    # and trailing -'s
+    TMP=$(echo $DIR | tr -cs '[:alnum:]' '-' | sed 's/^-*//' | sed 's/-*$//')
+    TIMESTAMP="_$(date +'%Y-%m-%d_%H-%M')"
+  fi
+
+  if [ "$PREPEND" -eq 1 ]; then
+    HOSTNAME="$(hostname)_"
+    if [ $? != 0 ]; then
+      echo "INFO: Unable to determine hostname; using 'host' as hostname" >&2
+      HOSTNAME='host_'
+    fi
+  else
+    HOSTNAME=''
+  fi
+ 
+  if [ -z "$ARCH" ]; then
+    echo "${HOSTNAME}${TMP}${TIMESTAMP}.tar.gz"
+  else
+    echo "${HOSTNAME}${ARCH}"
+  fi
+}
+
+# normalize_dir DIR
+#
+# removes slash at the end and multiple slashes within a directory string
+normalize_dir ()
+{
+  echo $1 | sed 's|/\+|/|g' | sed 's|/$||'
+}
+
+# maybe_relative_archdir DIR ARCHDIR
+#
+# returns a relative path to ARCHDIR if it is a subdirectory of DIR
+maybe_relative_archdir ()
+{
+  DIR_LEN=${#1}
+  ARCHDIR_LEN=${#2}
+  ARCHDIR_PREFIX=${2:0:$DIR_LEN}
+  LEN_DELTA=$(( $ARCHDIR_LEN - $DIR_LEN ))
+
+  if [ "$ARCHDIR_PREFIX" = "$1" -a $LEN_DELTA -ge 0 ]; then
+    echo $(normalize_dir ./${2:$DIR_LEN:$LEN_DELTA})
+  else
+    echo $(normalize_dir $2)
+  fi
+}
+
+# check_exit
+#
+# Checks exit code and quits if an error occurred
+check_exit ()
+{
+  EXITCODE=$?
+  NAME=$1
+  if [ $EXITCODE -ne 0 ]; then
+    echo "ERROR: $NAME finished with exit code $EXITCODE; can't continue." >&2
+    quit 2
+  fi
+}
+
+# archive
+#
+# performs archiving; returns 0 if everything worked as expected
+archive ()
+{
+  cd "$DIR"
+
+  if [ ! -e "$LASTROTATEFILE" ]; then
+    echo "INFO: No status file found in '$DIR/$LASTROTATEFILE'; creating it when archiving was successful." | $FOLD
+    echo
+  else
+    OLDDATE=$(date -r $LASTROTATEFILE +"%Y-%m-%d %k:%M:%S")
+    vecho "Last rotation was on $OLDDATE.\n"
+    ENOUGHTIMEPASSED=$(find $LASTROTATEFILE -mtime +$INTERVAL 2>/dev/null)
+    
+    if [ -z "$ENOUGHTIMEPASSED" -a $INTERVAL -ne 0 ]; then
+      DELTA=$(( ( $(date -r $LASTROTATEFILE +"%s") + ( $INTERVAL * 24 * 60 * 60 ) - $(date +"%s") ) / 60 / 60 / 24 ))
+      vecho "Not enough time has passed since last rotation, wait $DELTA more days.\n"
+      cd "$STARTDIR"
+      return 1
+    fi
+  fi
+
+  # create list
+  if [ "$INTERVAL" -ne 0 ]; then
+    TEXTFILES="older than $INTERVAL days"
+    TEXTDIRS="older than $INTERVAL days"
+    if [ $ACCESS -eq 1 ]; then
+      TIMETEST="-atime +$INTERVAL"
+    else
+      TIMETEST="-mtime +$INTERVAL"
+    fi
+  fi
+
+  if [ "$DESCEND" -eq 0 ]; then
+    MAXDEPTH="-maxdepth 1"
+  fi
+
+  SANITIZED_ARCHDIR=$(maybe_relative_archdir "$DIR" "$ARCHDIR")
+
+  vecho "Finding all files $TEXTFILES...\n"
+  find -mindepth 1 \
+       $MAXDEPTH \
+       ! -wholename "$SANITIZED_ARCHDIR/*" \
+       ! -name "$LASTROTATEFILE" \
+       ! -type d \
+       $TIMETEST \
+       -printf "%P\0" > $FILELIST
+  check_exit 'find'
+
+  vecho "Finding all directories $TEXTDIRS...\n"
+  find -mindepth 1 \
+       $MAXDEPTH \
+       -depth \
+       ! -wholename "$SANITIZED_ARCHDIR/*" \
+       -type d \
+       $TIMETEST \
+       -printf "%P\0" > $DIRLIST
+  check_exit 'find'
+
+  # get number of files and dirs to process
+  export FILENUM=$(tr \\000 \\n < $FILELIST | wc -l)
+  export DIRNUM=$(tr \\000 \\n < $DIRLIST | wc -l)
+
+  if [ "$FILENUM" -eq 0 -a "$DIRNUM" -eq 0 ]; then
+    echo "No files/directories older than $INTERVAL days found."
+    cd "$STARTDIR"
+    return 0
+  fi
+
+  # output list and/or stats
+  if [ $VERBOSE -ge 1 ]; then
+    echo "The following $FILENUM files will be archived and deleted:"
+    tr \\000 \\n < $FILELIST
+    echo
+    echo "The following $DIRNUM directories will be archived and deleted:"
+    tr \\000 \\n < $DIRLIST
+    echo
+  else
+    echo "$FILENUM files and $DIRNUM directories will be archived and deleted."
+  fi
+
+  # create archive
+  ARCH=$(build_archive_filename)
+
+  if [ -e "$ARCHDIR/$ARCH" ]; then
+    if [ $OVERWRITE -eq 1 ]; then
+      echo "Overwriting archive '$ARCH' ..." | $FOLD
+    else
+      echo "Can't continue: file '$ARCH' already exists. Use the -f switch to overwrite it." | $FOLD
+      quit 3
+    fi
+  else
+    echo "Creating archive '$ARCH' ..." | $FOLD
+  fi
+
+  if [ $DRYRUN -ne 1 ]; then
+    INCDIRLIST=''
+    INCFILELIST=''
+    if [ $DIRNUM -ne 0 ]; then
+      INCDIRLIST="--null -T ""$DIRLIST"""
+    fi
+    if [ $FILENUM -ne 0 ]; then
+      INCFILELIST="--null -T ""$FILELIST"""
+    fi
+    tar --no-recursion -czf "$ARCHDIR/$ARCH" $INCDIRLIST $INCFILELIST
+    # The DIRLIST must be processed before the FILELIST; the --no-recursion
+    # switch is needed to prevent duplicates
+    # WARNING: The above call of tar relies too much on the assumption,
+    # that parameters are evaluated in an expected order, namely the two
+    # -T and --null invocations.
+    # TODO: Need to clarify if that's OK.
+    # Another issue: On some machines I got a Segmentation fault when the
+    # directory list was empty but supplied with the -T option anyway, hence
+    # the T-option-building-stuff.
+    TAREXIT=$?
+  fi
+
+  cd "$STARTDIR"
+
+  return $TAREXIT
+}
+
+# delete_archived
+#
+# Deletes all files listed in LIST
+delete_archived ()
+{
+  cd "$DIR"
+
+  if [ "$FILENUM" -gt 0 ]; then
+    echo "Deleting $FILENUM files ..."
+    if [ $DRYRUN -ne 1 ]; then
+      cat $FILELIST | xargs -0 rm
+    fi
+  fi
+  if [ "$DIRNUM" -gt 0 ]; then
+    echo "Deleting $DIRNUM directories ..."
+    if [ $DRYRUN -ne 1 ]; then
+      cat $DIRLIST | xargs -0 rmdir
+    fi
+  fi
+
+  cd "$STARTDIR"
+}
+
+#
+# end of functions; program starts here
+#
+
+# initially read config
+if [ -f $CONFIG ]; then
+  vvecho "Reading initial config file '$CONFIG'.\n"
+  source $CONFIG
+fi
+
+# parse commandline arguments
+while getopts "hvnksfpgi:d:o:a:c:m:" OPTS; do
+  case $OPTS in
+    h) JUSTSHOWHELP=1;
+       ;;
+    v) VERBOSE=$(( $VERBOSE+1 ))
+       ;;
+    n) DRYRUN=1
+       VERBOSE=$(( $VERBOSE+1 ))
+       ;;
+    k) KEEP=1
+       ;;
+    s) DESCEND=0
+       ;;
+    f) OVERWRITE=1
+       ;;
+    p) PREPEND=1
+       ;;
+    g) ACCESS=1
+       ;;
+    i) INTERVAL=$OPTARG
+       ;;
+    d) DIR=$OPTARG
+       ;;
+    o) ARCHDIR=$OPTARG
+       ;;
+    a) CUSTOMARCH=1
+       ARCH=$OPTARG
+       ;;
+    c) CONFIG=$OPTARG
+       if [ -f $CONFIG ]; then
+         vvecho "Reading config file '$CONFIG'.\n"
+         source $CONFIG
+       else
+         echo "ERROR: No configuration file found in '$CONFIG'." 1>&2
+         quit 1
+       fi
+       ;;
+    m) MULTIPLEX=$OPTARG
+       ;;
+    *) JUSTSHOWHELP=1
+       ;;
+  esac
+done
+
+#
+# check configuration
+#
+
+: ${COLUMNS:=$($GETCOLUMNSCMD 2>/dev/null)}
+if nodigit "$COLUMNS"; then
+  COLUMNS=78
+  vvecho "INFO: Error getting terminal width via '$GETCOLUMNSCMD' so I assume $COLUMNS columns.\n" 1>&2
+fi
+
+if command -v $FOLDCMD >/dev/null; then
+  FOLD="$FOLDCMD -sw $COLUMNS"
+else
+  vvecho "INFO: '$FOLDCMD' doesn't exist, using plain 'cat' instead.\n" 1>&2
+  FOLD=cat
+fi
+
+if [ "$JUSTSHOWHELP" -eq 1 ]; then
+  usage && quit
+fi
+
+# multiplex mode
+if [ ! -z "$MULTIPLEX" ]; then
+  if [ ! -r "$MULTIPLEX" ]; then
+    echo "ERROR: Unable to open multiplex configuration file '$MULTIPLEX'."
+    quit 1
+  fi
+  while read CFGFILE; do
+    if [ -r $CFGFILE ]; then
+      echo ">>> drotate multiplexing: processing '$CFGFILE'..."
+      if ! $NAME -c $CFGFILE; then ERROR=1; fi
+      echo
+    else
+      echo -e "ERROR: Multiplexing: Unable to read config file '$CFGFILE'.\n"
+    fi
+  done < $MULTIPLEX
+  quit $ERROR # multiplex mode ignores any other configuration
+fi
+
+if [ -z "$DIR" ]; then
+  echo "INFO: You have to provide a directory for archiving."
+  usage
+  quit 1
+fi
+
+if nodigit "$INTERVAL"; then
+  echo "ERROR: '$INTERVAL' is not an integer."
+  usage
+  quit 1
+fi
+
+# quit if any directory is not accessible
+if [ ! -d "$DIR" ]; then
+  echo "ERROR: Unable to open '$DIR'."
+  quit 1
+fi
+if [ ! -d "$ARCHDIR" ]; then
+  echo "ERROR: Unable to open archive directory '$ARCHDIR'."
+  quit 1
+fi
+
+# make $ARCHDIR absolute (needed in tar call above)
+case $ARCHDIR in
+  [!/]*)
+    vvecho "INFO: Translating '$ARCHDIR' to "
+    cd $ARCHDIR
+    ARCHDIR="${PWD:-$(pwd)}"
+    vvecho "'$ARCHDIR'.\n"
+    cd $STARTDIR
+  ;;
+esac
+
+# warn if custom archive filename already exists
+if [ "$CUSTOMARCH" -eq 1 -a -e "$ARCHDIR/$ARCH" ]; then
+  vecho "INFO: Archive file '$ARCHDIR/$ARCH' already exists.\n" >&2
+fi
+
+#
+# MAIN PROGRAM
+#
+
+vecho "$(date +"%Y-%m-%d %H:%M:%S") $NAME $VERSION\n\n"
+
+# Specifying a directory by using '..' corrupts the ability to give the
+# archive a meaningful name. In these cases the canonical directory name
+# is taken.
+case $DIR in
+  ../*|*/..|*/../*|.|..)
+    vvecho "INFO: Translating '$DIR' to "
+    cd $DIR
+    DIR="${PWD:-$(pwd)}"
+    vvecho "'$DIR'.\n"
+    cd $STARTDIR
+  ;;
+esac
+
+# create temporary files which later contain the list of files and
+# directories to be archived
+FILELIST=$(mktemp)
+check_exit 'mktemp'
+DIRLIST=$(mktemp)
+check_exit 'mktemp'
+
+archive
+ARCHEXIT=$?
+
+# if archiving completed successfully, delete archived files/dirs and
+# complete rotation
+if [ $ARCHEXIT -eq 0 ]; then
+  if [ "$DRYRUN" -ne 1 ]; then
+    touch "$DIR/$LASTROTATEFILE"
+  fi
+  if [ "$FILENUM" -gt 0 -o "$DIRNUM" -gt 0 ]; then
+    if [ $KEEP -eq 1 ]; then
+      echo "Keeping archived files."
+    else
+      delete_archived
+    fi
+  fi
+  vecho "Rotation complete.\n"
+else
+  if [ "$ARCHEXIT" -ne 1 ]; then
+    echo "ERROR: Something went wrong during archiving so I don't delete anything."
+    quit 2
+  fi
+  # if $ARCHEXIT is 1 then not enough time passed since last rotation.
+fi
+
+quit
+
