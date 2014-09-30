@@ -487,9 +487,8 @@ fi
 
 vecho "$(date +"%Y-%m-%d %H:%M:%S") $NAME $VERSION\n\n"
 
-# Specifying a directory by using '..' corrupts the ability to give the
-# archive a meaningful name. In these cases the canonical directory name
-# is taken.
+# Relative directory specification makes it hard to give the archive a
+# meaningful name. In these cases the canonical directory name is taken.
 case $DIR in
   ../*|*/..|*/../*|.|..)
     vvecho "INFO: Translating '$DIR' to "
@@ -499,6 +498,11 @@ case $DIR in
     cd $STARTDIR
   ;;
 esac
+
+if [ "$DIR" == "$ARCHDIR" ]; then
+  echo "ERROR: Archive directory and directory to rotate must be different."
+  quit 1;
+fi
 
 # create temporary files which later contain the list of files and
 # directories to be archived
