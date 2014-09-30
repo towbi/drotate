@@ -23,7 +23,7 @@
 # Recommends: tput, fold, hostname
 
 NAME='drotate'
-VERSION='0.9.7'
+VERSION='1.0.0'
 : ${PWD:=$(pwd)}
 STARTDIR="$PWD"
 
