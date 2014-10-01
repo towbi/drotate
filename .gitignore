@@ -1,3 +1,4 @@
 sampledata/
 *.swp
+.SyncIgnore
 
