@@ -74,7 +74,7 @@ usage ()
   echo "Usage: $NAME [options]"
   echo
   vecho "$NAME version $VERSION, 2008-2014 Tobias Nissen <tn@movb.de>\n\n"
-  echo "$NAME archives all files and subdirectories older a defineable age and deletes them. Subdirectories to consider when using -t need to be marked by placing a dotfile ($DROTATEFILE) inside of them." | $FOLD
+  echo "$NAME archives all files and subdirectories older a defineable age and deletes them. Subdirectories to consider need to be marked by placing a dotfile ($DROTATEFILE) inside of them." | $FOLD
   echo
   vecho "$NAME does not run unless a certain number of days (default: $INTERVAL) have passed since its last execution. $NAME can hence be periodically executed without producing an archive for each run." | $FOLD
   echo "$NAME's only mandatory parameter is a directory to run on, which can also be set in a config file." | $FOLD

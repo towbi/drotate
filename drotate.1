@@ -1,7 +1,7 @@
 .TH DROTATE 1
 .SH NAME
-drotate \- archives and deletes (rotates) files and directories
-older than a given age 
+drotate \- archives all files and subdirectories older than a
+defineable age and deletes them.
 .SH SYNOPSIS
 If the directory to rotate is specified in the config file:
 
@@ -38,21 +38,23 @@ shall process. If you want to do without a configuration file,
 you have to pass at least the name of the directory to process
 with the `-d' option.
 .IP \-d\ dir
-specifies the directory to process. Everything in it will
-be considered for rotation. The directory itself and the
-contained state file will never be subject to rotation.
+specifies the directory to process (archive directory).
+.B drotate
+then descends into all subdirectories (unless `-d' is used)
+and finds directories marked with a dotfile '.drotate'. Only
+the directories found will be considered for rotation.
 .IP \-o\ dir
-specifies where to save the archive file. Default is to save
-the archive to the current directory.
+specifies where to save the archive file (output directory).
+The default is to save the archive to the current directory. Do
+note that this output directory and the archive directory must
+not be the same.
 .IP \-a\ file
 specifies an alternate name for the resulting archive. See
 the
 .B DEFAULTS
 section on the default archive name.
 .IP \-i\ days
-tells
-.B drotate
-which interval to use for rotation. This serves two purposes. In
+the interval to use for rotation. This serves two purposes. In
 the first place it specifies how old files and directories have
 to be in order for them to be rotated. At the same time this
 value determines if the rotation will take place at all (certain
@@ -76,6 +78,9 @@ keeps archived files, instead of deleting them.
 .IP \-f
 forces overwriting of an existing archive. Default is to
 terminate if an archive already exists.
+.IP \-F
+forces execution, even if necessary waiting time has not yet been
+reached.
 .IP \-s
 prevents
 .B drotate
@@ -109,45 +114,49 @@ the
 section):
 .TP
 .B DIR
-specifies the directory to process.
+the directory to process
 .TP
 .B ARCHDIR
-specifies where to save the archive file.
+where to save the archive file
 .TP
 .B ARCHFILE
-specifies an alternate name for the resulting archive.
+alternate name for the resulting archive
 .TP
 .B INTERVAL
-specifies the interval of rotation.
+interval of rotation
 .TP
 .B ACCESS
-tells drotate to test for access time instead of modification 
-time when determining the age of a file.
+tests for access time instead of modification time when determining
+the age of a file
 .TP
 .B PREPEND
-tells drotate to prepend the hostname.
+prepends the hostname to archive files
 .TP
 .B DRYRUN
 tells drotate to perform a dry run, i.e. not to touch
 anything and just to show what would be done.
 .TP
 .B KEEP
-tells drotate to keep archived files, instead of deleting them.
+keeps archived files instead of deleting them
 .TP
 .B MULTPLEX
-puts drotate in multiplex mode, see `-m' above.
+puts drotate in multiplex mode, see `-m' above
 .TP
 .B DESCEND
 whether to descend into subdirectories
 .TP
 .B OVERWRITE
-tells drotate to overwrite an existing archive.
+switch to overwrite an existing archive
 .TP
 .B LASTROTATEFILE
-tells drotate to use another name for the state file.
+defines another name for the state file
 .TP
 .B VERBOSE
-tells drotate to be verbose.
+enables verbose output
+.TP
+.B FORCE
+forces execution
+
 .SH DEFAULTS
 .IP Interval
 The default interval is 150 days.
@@ -168,6 +177,9 @@ The default name of the state file is `.lastdrotate'. It
 is saved in the directory to process.
 .IP Prepending\ of\ hostname
 The default is no to prepend the hostname.
+.IP Descend\ into\ subdirectories
+The default is to descend into subdirectories.
+
 .SH EXIT STATUS
 .B drotate
 exits with status 0 if the rotation completed successfully. It
@@ -177,40 +189,33 @@ already exists but drotate must not overwrite it, it exits with 3.
 .SH BACKEND TOOLS
 drotate requires the following backend tools to work:
 .TP
-*
-find, to find files to rotate
+* find
 .TP
-*
-mktemp, to create temporary files
+* mktemp
 .TP
-*
-tr, to process lists of filenames delimited by the NULL character
+* tr
 .TP
-*
-sed, to create a nice default archive name
+* sed
 .TP
-*
-pwd, to get the current working directory if $PWD isn't set
+* pwd
 .TP
-*
-cat, to output the list of filenames
+* cat
 .TP
-*
-tac, to output the list of directories in reverse order
+* tac
 .TP
-*
-hostname, to get the hostname of the system
+* hostname
 .TP
-*
-wc, to count the number of directories and files to be processed
+* wc
+.TP
+* dirname
+
 .PP
 The availability of the following tools is optional but recommended:
 .TP
-*
-tput, to get the number of columns if $COLUMNS isn't set
+* tput, to get the number of columns if $COLUMNS isn't set
 .TP
-*
-fold, to prevent line-breaks within word-boundaries
+* fold, to prevent line-breaks within word-boundaries
+
 .SH AUTHOR
 Tobias Nissen <tn@movb.de>
 
