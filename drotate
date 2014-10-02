@@ -2,7 +2,7 @@
 #
 # drotate - archives and deletes files older a given age
 #
-# Copyright 2008-2010 Tobias Mahnke-Nissen <tn@movb.de>
+# Copyright 2008-2014 Tobias Mahnke-Nissen <tn@movb.de>
 #
 #   This program is free software: you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -19,12 +19,12 @@
 #
 # See usage() for program description.
 #
-# Depends on: find, mktemp, tr, sed, pwd, cat, tac, wc
+# Depends on: find, mktemp, tr, sed, pwd, cat, tac, wc, dirname
 # Recommends: tput, fold, hostname
 
 NAME='drotate'
-VERSION='1.0.0'
-: ${PWD:=$(pwd)}
+VERSION='2.0.0-alpha'
+: ${PWD:=$(pwd)} # set PWD if unset, using pwd command
 STARTDIR="$PWD"
 
 # some defaults
@@ -37,10 +37,13 @@ DESCEND=1
 KEEP=0
 CUSTOMARCH=0
 JUSTSHOWHELP=0
+FORCE=0
+FIRSTRUN=0
 
-CONFIG='~/.drotate.conf'
+CONFIG="~/.$NAME.conf"
 ARCHDIR="$PWD"
-LASTROTATEFILE='.lastdrotate'
+LASTROTATEFILE=".last$NAME"
+DROTATEFILE=".$NAME"
 INTERVAL=150 # number of days that must have passed since last rotation
 
 FOLDCMD='fold'
@@ -67,32 +70,34 @@ nodigit ()
 # Prints out usage information
 usage ()
 {
+  echo
   echo "Usage: $NAME [options]"
   echo
-  vecho "$NAME version $VERSION, 2008-2010 Tobias Nissen <tn@movb.de>\n\n"
-  echo "$NAME archives all files in a given directory that are older than a given number of days and deletes those files." | $FOLD
+  vecho "$NAME version $VERSION, 2008-2014 Tobias Nissen <tn@movb.de>\n\n"
+  echo "$NAME archives all files and subdirectories older a defineable age and deletes them. Subdirectories to consider when using -t need to be marked by placing a dotfile ($DROTATEFILE) inside of them." | $FOLD
   echo
-  vecho "In order not to produce a bunch of small archives, $NAME refuses to run, if not at least a given number of days (adjustable with INTERVAL) has passed since the last execution. Therefore it is OK to run it once a week via cron or the like.\n\n" | $FOLD
-  echo "$NAME's only mandatory parameter is a directory to run on, which can be set in a config file" | $FOLD
-  vecho "The default interval is 150 days; the default archive file name consists of the directory name and the current timestamp.\n\n" | $FOLD
-  vecho "Everything can be configured in a config file. The order of command line arguments determines how a parameter is set. Example:\n\t$NAME -c drotate.conf -i 20\nNo matter how drotate.conf sets INTERVAL, the value 20 is used.\n" | $FOLD
+  vecho "$NAME does not run unless a certain number of days (default: $INTERVAL) have passed since its last execution. $NAME can hence be periodically executed without producing an archive for each run." | $FOLD
+  echo "$NAME's only mandatory parameter is a directory to run on, which can also be set in a config file." | $FOLD
+  vecho "The default archive file name consists of the directory name and the current timestamp.\n\n" | $FOLD
+  vecho "All parameters can be set in a config file. The order of command line arguments determines how a parameter is set. Example:\n\t$NAME -c drotate.conf -i 20\nNo matter how drotate.conf sets INTERVAL, the value 20 is used.\n" | $FOLD
 
   echo
   echo "Options:"
-  echo "    -d DIR      Rotate files in DIR (instead of '$DIR')" | $FOLD
+  echo "    -d DIR      Rotate files in DIR"
   echo "    -h          Show help (more help with -v)"
   echo "    -c FILE     Read configuration from FILE instead of '$CONFIG'" | $FOLD
   echo "    -m FILE     Read FILE which holds a list of drotate configuration files" | $FOLD
   echo "    -v          Be verbose (can be supplied multiple times to increase verbosity)" | $FOLD
   echo "    -n          Don't actually rotate, just show what would be done (implies -v)" | $FOLD
   echo "    -k          Keep archived files, don't delete them"
-  echo "    -o DIR      Save archive in DIR (instead of current directory)"
+  echo "    -o DIR      Name of subdirectory to place the archive in (instead of current directory)" | $FOLD
   echo "    -a ARCH     Use ARCH as filename for archive"
   echo "    -i INTRVL   Set the interval to INTRVL (instead of $INTERVAL)" | $FOLD
   echo "    -g          Check access time instead of modification time"
   echo "    -s          Don't descend into subdirectories"
   echo "    -f          Overwrite an existing archive"
   echo "    -p          Prepend hostname to archive filename"
+  echo "    -F          Force execution, even if less days have passed than needed"
   echo
 }
 
@@ -116,6 +121,17 @@ vvecho ()
   fi
 }
 
+# warn MESSAGE
+#
+# prints (possibly line-wrapped) message to STDERR
+warn () {
+  if [ -z "$FOLD" ]; then
+    printf "%b\n" "$*" >&2
+  else
+    printf "%b\n" "$*" | $FOLD >&2
+  fi
+}
+
 
 # quit EXITCODE
 #
@@ -131,6 +147,14 @@ quit ()
   if [ -e "$DIRLIST" ]; then
     vvecho "Deleting directory list '$DIRLIST'.\n"
     rm "$DIRLIST"
+  fi
+  if [ -e "$SEARCHLIST" ]; then
+    vvecho "Deleting search list '$SEARCHLIST'.\n"
+    rm "$SEARCHLIST"
+  fi
+  if [ -e "$SWAP" ]; then
+    vvecho "Deleting swap file '$SWAP'.\n"
+    rm "$SWAP"
   fi
   exit $1
 }
@@ -151,7 +175,7 @@ build_archive_filename ()
   if [ "$PREPEND" -eq 1 ]; then
     HOSTNAME="$(hostname)_"
     if [ $? != 0 ]; then
-      echo "INFO: Unable to determine hostname; using 'host' as hostname" >&2
+      warn "INFO: Unable to determine hostname; using 'host' as hostname."
       HOSTNAME='host_'
     fi
   else
@@ -198,7 +222,7 @@ check_exit ()
   EXITCODE=$?
   NAME=$1
   if [ $EXITCODE -ne 0 ]; then
-    echo "ERROR: $NAME finished with exit code $EXITCODE; can't continue." >&2
+    warn "ERROR: $NAME finished with exit code $EXITCODE; can't continue."
     quit 2
   fi
 }
@@ -211,18 +235,24 @@ archive ()
   cd "$DIR"
 
   if [ ! -e "$LASTROTATEFILE" ]; then
-    echo "INFO: No status file found in '$DIR/$LASTROTATEFILE'; creating it when archiving was successful." | $FOLD
+    warn "INFO: No status file found in '$DIR/$LASTROTATEFILE'; creating it when archiving was successful."
     echo
   else
-    OLDDATE=$(date -r $LASTROTATEFILE +"%Y-%m-%d %k:%M:%S")
-    vecho "Last rotation was on $OLDDATE.\n"
-    ENOUGHTIMEPASSED=$(find $LASTROTATEFILE -mtime +$INTERVAL 2>/dev/null)
-    
-    if [ -z "$ENOUGHTIMEPASSED" -a $INTERVAL -ne 0 ]; then
-      DELTA=$(( ( $(date -r $LASTROTATEFILE +"%s") + ( $INTERVAL * 24 * 60 * 60 ) - $(date +"%s") ) / 60 / 60 / 24 ))
-      vecho "Not enough time has passed since last rotation, wait $DELTA more days.\n"
-      cd "$STARTDIR"
-      return 1
+    if [ $FIRSTRUN -ne 1 ]; then
+      OLDDATE=$(date -r $LASTROTATEFILE +"%Y-%m-%d %k:%M:%S")
+      vecho "Last rotation was on $OLDDATE.\n"
+      ENOUGHTIMEPASSED=$(find $LASTROTATEFILE -mtime +$INTERVAL 2>/dev/null)
+
+      if [ -z "$ENOUGHTIMEPASSED" -a $INTERVAL -ne 0 ]; then
+        DELTA=$(( ( $(date -r $LASTROTATEFILE +"%s") + ( $INTERVAL * 24 * 60 * 60 ) - $(date +"%s") ) / 60 / 60 / 24 ))
+        if [ $FORCE -ne 0 ]; then
+            vecho "Forcing execution (not enough time passed since last rotation, we are $DELTA days early).\n" | $FOLD
+        else
+            vecho "Not enough time has passed since last rotation, wait $DELTA more days.\n"
+            cd "$STARTDIR"
+            return 1
+        fi
+      fi
     fi
   fi
 
@@ -243,25 +273,54 @@ archive ()
 
   SANITIZED_ARCHDIR=$(maybe_relative_archdir "$DIR" "$ARCHDIR")
 
-  vecho "Finding all files $TEXTFILES...\n"
-  find -mindepth 1 \
-       $MAXDEPTH \
-       ! -wholename "$SANITIZED_ARCHDIR/*" \
-       ! -name "$LASTROTATEFILE" \
-       ! -type d \
-       $TIMETEST \
-       -printf "%P\0" > $FILELIST
+  vecho "Creating list of directories to rotate...\n"
+  find . -type f -name "$DROTATEFILE" -printf "%P\0" > $SEARCHLIST
   check_exit 'find'
 
-  vecho "Finding all directories $TEXTDIRS...\n"
-  find -mindepth 1 \
-       $MAXDEPTH \
-       -depth \
-       ! -wholename "$SANITIZED_ARCHDIR/*" \
-       -type d \
-       $TIMETEST \
-       -printf "%P\0" > $DIRLIST
-  check_exit 'find'
+  if [ $VERBOSE -gt 0 ]; then
+    while IFS= read -r -d '' drotatefilepath; do
+      dir=$(dirname $drotatefilepath)
+      echo $dir
+    done < $SEARCHLIST
+  fi
+
+  # loop through dirs marked for rotation and find files/dirs to rotate
+  while IFS= read -r -d '' drotatefilepath; do
+    dir=$(dirname $drotatefilepath)
+
+    echo find $dir -mindepth 1         $MAXDEPTH          ! -wholename "$SANITIZED_ARCHDIR/*"          ! -name "$LASTROTATEFILE"          ! -name "$DROTATEFILE"          ! -type d          $TIMETEST          -printf "%p\0" 
+
+    vecho "Finding all files $TEXTFILES in '$dir'...\n"
+    find $dir -mindepth 1 \
+         $MAXDEPTH \
+         ! -wholename "$SANITIZED_ARCHDIR/*" \
+         ! -name "$LASTROTATEFILE" \
+         ! -name "$DROTATEFILE" \
+         ! -type d \
+         $TIMETEST \
+         -printf "%p\0" > $FILELIST
+    check_exit 'find'
+
+    if [ $DESCEND -eq 0 ]; then
+      # If we do not descend we can not clear files in subdirectories so
+      # it really only makes sense to search for *empty* directories here
+      vecho "Finding all empty directories $TEXTDIRS in '$dir'...\n"
+      EMPTY="-empty"
+    else
+      vecho "Finding all directories $TEXTDIRS in '$dir'...\n"
+    fi
+
+    find $dir -mindepth 1 \
+         $MAXDEPTH \
+         -depth \
+         $EMPTY \
+         ! -wholename "$SANITIZED_ARCHDIR/*" \
+         -type d \
+         $TIMETEST \
+         -printf "%p\0" > $DIRLIST
+    check_exit 'find'
+
+  done < $SEARCHLIST 
 
   # get number of files and dirs to process
   export FILENUM=$(tr \\000 \\n < $FILELIST | wc -l)
@@ -290,9 +349,9 @@ archive ()
 
   if [ -e "$ARCHDIR/$ARCH" ]; then
     if [ $OVERWRITE -eq 1 ]; then
-      echo "Overwriting archive '$ARCH' ..." | $FOLD
+      warn "Overwriting archive '$ARCH' ..."
     else
-      echo "Can't continue: file '$ARCH' already exists. Use the -f switch to overwrite it." | $FOLD
+      warn "Can't continue: file '$ARCH' already exists. Use the -f switch to overwrite it."
       quit 3
     fi
   else
@@ -300,6 +359,8 @@ archive ()
   fi
 
   if [ $DRYRUN -ne 1 ]; then
+    # When using tar's T option, one must not supply an empty list: I got
+    # a segfault when doing that with some versions of tar
     INCDIRLIST=''
     INCFILELIST=''
     if [ $DIRNUM -ne 0 ]; then
@@ -308,16 +369,9 @@ archive ()
     if [ $FILENUM -ne 0 ]; then
       INCFILELIST="--null -T ""$FILELIST"""
     fi
-    tar --no-recursion -czf "$ARCHDIR/$ARCH" $INCDIRLIST $INCFILELIST
     # The DIRLIST must be processed before the FILELIST; the --no-recursion
     # switch is needed to prevent duplicates
-    # WARNING: The above call of tar relies too much on the assumption,
-    # that parameters are evaluated in an expected order, namely the two
-    # -T and --null invocations.
-    # TODO: Need to clarify if that's OK.
-    # Another issue: On some machines I got a Segmentation fault when the
-    # directory list was empty but supplied with the -T option anyway, hence
-    # the T-option-building-stuff.
+    tar --no-recursion -czf "$ARCHDIR/$ARCH" $INCDIRLIST $INCFILELIST
     TAREXIT=$?
   fi
 
@@ -328,7 +382,7 @@ archive ()
 
 # delete_archived
 #
-# Deletes all files listed in LIST
+# Deletes all files listed in FILELIST and all dirs listes in DIRLIST
 delete_archived ()
 {
   cd "$DIR"
@@ -353,6 +407,34 @@ delete_archived ()
 # end of functions; program starts here
 #
 
+valid_options="hvnksfFpgi:d:o:a:c:m:"
+
+# pase verbose flag first
+while OPTERR=1 getopts ":$valid_options" OPTS; do
+  case $OPTS in
+    v) VERBOSE=$(( $VERBOSE+1 ))
+       ;;
+  esac
+done
+OPTIND=0 # rewind getopts' index
+
+vecho "$NAME $VERSION $(date +"%Y-%m-%d %H:%M:%S")\n\n"
+
+if command -v $GETCOLUMNSCMD >/dev/null; then
+  : ${COLUMNS:=$($GETCOLUMNSCMD)}
+fi
+if nodigit "$COLUMNS"; then
+  COLUMNS=78
+  vvecho "INFO: Error getting terminal width via '$GETCOLUMNSCMD' so I assume $COLUMNS columns.\n"
+fi
+
+if command -v $FOLDCMD >/dev/null; then
+  FOLD="$FOLDCMD -sw $COLUMNS"
+else
+  vvecho "INFO: '$FOLDCMD' doesn't exist, using plain 'cat' instead.\n"
+  FOLD=cat
+fi
+
 # initially read config
 if [ -f $CONFIG ]; then
   vvecho "Reading initial config file '$CONFIG'.\n"
@@ -360,12 +442,11 @@ if [ -f $CONFIG ]; then
 fi
 
 # parse commandline arguments
-while getopts "hvnksfpgi:d:o:a:c:m:" OPTS; do
+while getopts $valid_options OPTS; do
   case $OPTS in
     h) JUSTSHOWHELP=1;
        ;;
-    v) VERBOSE=$(( $VERBOSE+1 ))
-       ;;
+    v) ;;
     n) DRYRUN=1
        VERBOSE=$(( $VERBOSE+1 ))
        ;;
@@ -393,11 +474,13 @@ while getopts "hvnksfpgi:d:o:a:c:m:" OPTS; do
          vvecho "Reading config file '$CONFIG'.\n"
          source $CONFIG
        else
-         echo "ERROR: No configuration file found in '$CONFIG'." 1>&2
+         warn "ERROR: No configuration file found in '$CONFIG'."
          quit 1
        fi
        ;;
     m) MULTIPLEX=$OPTARG
+       ;;
+    F) FORCE=1
        ;;
     *) JUSTSHOWHELP=1
        ;;
@@ -408,19 +491,6 @@ done
 # check configuration
 #
 
-: ${COLUMNS:=$($GETCOLUMNSCMD 2>/dev/null)}
-if nodigit "$COLUMNS"; then
-  COLUMNS=78
-  vvecho "INFO: Error getting terminal width via '$GETCOLUMNSCMD' so I assume $COLUMNS columns.\n" 1>&2
-fi
-
-if command -v $FOLDCMD >/dev/null; then
-  FOLD="$FOLDCMD -sw $COLUMNS"
-else
-  vvecho "INFO: '$FOLDCMD' doesn't exist, using plain 'cat' instead.\n" 1>&2
-  FOLD=cat
-fi
-
 if [ "$JUSTSHOWHELP" -eq 1 ]; then
   usage && quit
 fi
@@ -428,7 +498,7 @@ fi
 # multiplex mode
 if [ ! -z "$MULTIPLEX" ]; then
   if [ ! -r "$MULTIPLEX" ]; then
-    echo "ERROR: Unable to open multiplex configuration file '$MULTIPLEX'."
+    warn "ERROR: Unable to open multiplex configuration file '$MULTIPLEX'."
     quit 1
   fi
   while read CFGFILE; do
@@ -437,31 +507,31 @@ if [ ! -z "$MULTIPLEX" ]; then
       if ! $NAME -c $CFGFILE; then ERROR=1; fi
       echo
     else
-      echo -e "ERROR: Multiplexing: Unable to read config file '$CFGFILE'.\n"
+      warn "ERROR: Multiplexing: Unable to read config file '$CFGFILE'.\n"
     fi
   done < $MULTIPLEX
   quit $ERROR # multiplex mode ignores any other configuration
 fi
 
 if [ -z "$DIR" ]; then
-  echo "INFO: You have to provide a directory for archiving."
+  warn "INFO: You have to provide a directory for archiving."
   usage
   quit 1
 fi
 
 if nodigit "$INTERVAL"; then
-  echo "ERROR: '$INTERVAL' is not an integer."
+  warn "ERROR: '$INTERVAL' is not an integer."
   usage
   quit 1
 fi
 
 # quit if any directory is not accessible
 if [ ! -d "$DIR" ]; then
-  echo "ERROR: Unable to open '$DIR'."
+  warn "ERROR: Unable to open '$DIR'."
   quit 1
 fi
 if [ ! -d "$ARCHDIR" ]; then
-  echo "ERROR: Unable to open archive directory '$ARCHDIR'."
+  warn "ERROR: Unable to open archive directory '$ARCHDIR'."
   quit 1
 fi
 
@@ -478,14 +548,12 @@ esac
 
 # warn if custom archive filename already exists
 if [ "$CUSTOMARCH" -eq 1 -a -e "$ARCHDIR/$ARCH" ]; then
-  vecho "INFO: Archive file '$ARCHDIR/$ARCH' already exists.\n" >&2
+  warn "INFO: Archive file '$ARCHDIR/$ARCH' already exists."
 fi
 
 #
 # MAIN PROGRAM
 #
-
-vecho "$(date +"%Y-%m-%d %H:%M:%S") $NAME $VERSION\n\n"
 
 # Relative directory specification makes it hard to give the archive a
 # meaningful name. In these cases the canonical directory name is taken.
@@ -500,7 +568,7 @@ case $DIR in
 esac
 
 if [ "$DIR" == "$ARCHDIR" ]; then
-  echo "ERROR: Archive directory and directory to rotate must be different."
+  warn "ERROR: Archive directory and directory to rotate must be different."
   quit 1;
 fi
 
@@ -509,6 +577,10 @@ fi
 FILELIST=$(mktemp)
 check_exit 'mktemp'
 DIRLIST=$(mktemp)
+check_exit 'mktemp'
+SEARCHLIST=$(mktemp)
+check_exit 'mktemp'
+SWAP=$(mktemp)
 check_exit 'mktemp'
 
 archive
@@ -530,7 +602,7 @@ if [ $ARCHEXIT -eq 0 ]; then
   vecho "Rotation complete.\n"
 else
   if [ "$ARCHEXIT" -ne 1 ]; then
-    echo "ERROR: Something went wrong during archiving so I don't delete anything."
+    warn "ERROR: Something went wrong during archiving so I don't delete anything."
     quit 2
   fi
   # if $ARCHEXIT is 1 then not enough time passed since last rotation.
