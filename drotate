@@ -33,7 +33,6 @@ DRYRUN=0
 ACCESS=0
 OVERWRITE=0
 PREPEND=0
-DESCEND=1
 KEEP=0
 CUSTOMARCH=0
 JUSTSHOWHELP=0
@@ -95,7 +94,6 @@ usage ()
   echo "    -a ARCH     Use ARCH as filename for archive"
   echo "    -i INTRVL   Set the interval to INTRVL (instead of $INTERVAL)" | $FOLD
   echo "    -g          Check access time instead of modification time"
-  echo "    -s          Don't descend into subdirectories"
   echo "    -f          Overwrite an existing archive"
   echo "    -p          Prepend hostname to archive filename"
   echo "    -F          Force execution, even if less days have passed than needed"
@@ -268,10 +266,6 @@ archive ()
     fi
   fi
 
-  if [ "$DESCEND" -eq 0 ]; then
-    MAXDEPTH="-maxdepth 1"
-  fi
-
   SANITIZED_ARCHDIR=$(maybe_relative_archdir "$DIR" "$ARCHDIR")
 
   vecho "Creating lists of directories to rotate...\n"
@@ -434,7 +428,7 @@ delete_archived ()
 # end of functions; program starts here
 #
 
-valid_options="hvnksfFpgi:d:o:a:c:m:"
+valid_options="hvnkfFpgi:d:o:a:c:m:"
 
 # pase verbose flag first
 while OPTERR=1 getopts ":$valid_options" OPTS; do
@@ -478,8 +472,6 @@ while getopts $valid_options OPTS; do
        VERBOSE=$(( $VERBOSE+1 ))
        ;;
     k) KEEP=1
-       ;;
-    s) DESCEND=0
        ;;
     f) OVERWRITE=1
        ;;
