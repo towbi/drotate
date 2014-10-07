@@ -44,6 +44,7 @@ CONFIG="~/.$NAME.conf"
 ARCHDIR="$PWD"
 LASTROTATEFILE=".last$NAME"
 DROTATEFILE=".$NAME"
+DROTATEFILEPLUS=".$NAME+"
 INTERVAL=150 # number of days that must have passed since last rotation
 
 FOLDCMD='fold'
@@ -148,13 +149,13 @@ quit ()
     vvecho "Deleting directory list '$DIRLIST'.\n"
     rm "$DIRLIST"
   fi
-  if [ -e "$SEARCHLIST" ]; then
-    vvecho "Deleting search list '$SEARCHLIST'.\n"
-    rm "$SEARCHLIST"
+  if [ -e "$SEARCHLISTFLAT" ]; then
+    vvecho "Deleting search list '$SEARCHLISTFLAT' (flat).\n"
+    rm "$SEARCHLISTFLAT"
   fi
-  if [ -e "$SWAP" ]; then
-    vvecho "Deleting swap file '$SWAP'.\n"
-    rm "$SWAP"
+  if [ -e "$SEARCHLISTDEEP" ]; then
+    vvecho "Deleting search list '$SEARCHLISTDEEP' (deep).\n"
+    rm "$SEARCHLISTDEEP"
   fi
   exit $1
 }
@@ -273,54 +274,80 @@ archive ()
 
   SANITIZED_ARCHDIR=$(maybe_relative_archdir "$DIR" "$ARCHDIR")
 
-  vecho "Creating list of directories to rotate...\n"
-  find . -type f -name "$DROTATEFILE" -printf "%P\0" > $SEARCHLIST
+  vecho "Creating lists of directories to rotate...\n"
+  find . -type f -name "$DROTATEFILE" -printf "%P\0" > $SEARCHLISTFLAT
+  check_exit 'find'
+  find . -type f -name "$DROTATEFILEPLUS" -printf "%P\0" > $SEARCHLISTDEEP
   check_exit 'find'
 
   if [ $VERBOSE -gt 0 ]; then
     while IFS= read -r -d '' drotatefilepath; do
       dir=$(dirname $drotatefilepath)
-      echo $dir
-    done < $SEARCHLIST
+      echo $dir (flat)
+    done < $SEARCHLISTFLAT
+    while IFS= read -r -d '' drotatefilepath; do
+      dir=$(dirname $drotatefilepath)
+      echo "$dir (deep)"
+    done < $SEARCHLISTDEEP
   fi
 
+  #
   # loop through dirs marked for rotation and find files/dirs to rotate
+  #
+
+  # flat
   while IFS= read -r -d '' drotatefilepath; do
     dir=$(dirname $drotatefilepath)
 
-    echo find $dir -mindepth 1         $MAXDEPTH          ! -wholename "$SANITIZED_ARCHDIR/*"          ! -name "$LASTROTATEFILE"          ! -name "$DROTATEFILE"          ! -type d          $TIMETEST          -printf "%p\0" 
-
-    vecho "Finding all files $TEXTFILES in '$dir'...\n"
+    vecho "Finding all files $TEXTFILES in '$dir' (flat)...\n"
     find $dir -mindepth 1 \
-         $MAXDEPTH \
+         -maxdepth 1 \
          ! -wholename "$SANITIZED_ARCHDIR/*" \
          ! -name "$LASTROTATEFILE" \
          ! -name "$DROTATEFILE" \
          ! -type d \
          $TIMETEST \
-         -printf "%p\0" > $FILELIST
+         -printf "%p\0" >> $FILELIST
     check_exit 'find'
 
-    if [ $DESCEND -eq 0 ]; then
-      # If we do not descend we can not clear files in subdirectories so
-      # it really only makes sense to search for *empty* directories here
-      vecho "Finding all empty directories $TEXTDIRS in '$dir'...\n"
-      EMPTY="-empty"
-    else
-      vecho "Finding all directories $TEXTDIRS in '$dir'...\n"
-    fi
-
+    # If we do not descend we can not clear files in subdirectories so
+    # it really only makes sense to search for *empty* directories here
+    vecho "Finding all empty directories $TEXTDIRS in '$dir' (flat)...\n"
     find $dir -mindepth 1 \
-         $MAXDEPTH \
+         -maxdepth 1 \
          -depth \
-         $EMPTY \
+         -empty \
          ! -wholename "$SANITIZED_ARCHDIR/*" \
          -type d \
          $TIMETEST \
-         -printf "%p\0" > $DIRLIST
+         -printf "%p\0" >> $DIRLIST
     check_exit 'find'
 
-  done < $SEARCHLIST 
+  done < $SEARCHLISTFLAT
+
+  # deep
+  while IFS= read -r -d '' drotatefilepath; do
+    dir=$(dirname $drotatefilepath)
+
+    vecho "Finding all files $TEXTFILES in '$dir' (deep)...\n"
+    find $dir -mindepth 1 \
+         ! -wholename "$SANITIZED_ARCHDIR/*" \
+         ! -name "$LASTROTATEFILE" \
+         ! -name "$DROTATEFILE" \
+         ! -type d \
+         $TIMETEST \
+         -printf "%p\0" >> $FILELIST
+    check_exit 'find'
+
+    vecho "Finding all directories $TEXTDIRS in '$dir' (deep)...\n"
+    find $dir -mindepth 1 \
+         -depth \
+         ! -wholename "$SANITIZED_ARCHDIR/*" \
+         -type d \
+         $TIMETEST \
+         -printf "%p\0" >> $DIRLIST
+    check_exit 'find'
+  done < $SEARCHLISTDEEP
 
   # get number of files and dirs to process
   export FILENUM=$(tr \\000 \\n < $FILELIST | wc -l)
@@ -578,9 +605,9 @@ FILELIST=$(mktemp)
 check_exit 'mktemp'
 DIRLIST=$(mktemp)
 check_exit 'mktemp'
-SEARCHLIST=$(mktemp)
+SEARCHLISTFLAT=$(mktemp)
 check_exit 'mktemp'
-SWAP=$(mktemp)
+SEARCHLISTDEEP=$(mktemp)
 check_exit 'mktemp'
 
 archive
