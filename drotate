@@ -23,7 +23,7 @@
 # Recommends: tput, fold, hostname
 
 NAME='drotate'
-VERSION='2.0.0-alpha'
+VERSION='2.0.1-alpha'
 : ${PWD:=$(pwd)} # set PWD if unset, using pwd command
 STARTDIR="$PWD"
 
@@ -74,7 +74,7 @@ usage ()
   echo "Usage: $NAME [options]"
   echo
   vecho "$NAME version $VERSION, 2008-2014 Tobias Nissen <tn@movb.de>\n\n"
-  echo "$NAME archives all files and subdirectories older a defineable age and deletes them. Subdirectories to consider need to be marked by placing a dotfile ($DROTATEFILE) inside of them." | $FOLD
+  echo "$NAME archives all files and subdirectories older a defineable age and deletes them. Subdirectories to consider need to be marked by placing a dotfile inside of them: $DROTATEFILE marks a directory which is to be processed flatly (i.e. no subdirectories will be considered) and $DROTATEFILEPLUS marks a directory which is to be processed deeply (i.e. subdirectories and files in them will be considered)." | $FOLD
   echo
   vecho "$NAME does not run unless a certain number of days (default: $INTERVAL) have passed since its last execution. $NAME can hence be periodically executed without producing an archive for each run." | $FOLD
   echo "$NAME's only mandatory parameter is a directory to run on, which can also be set in a config file." | $FOLD
@@ -277,7 +277,7 @@ archive ()
   if [ $VERBOSE -gt 0 ]; then
     while IFS= read -r -d '' drotatefilepath; do
       dir=$(dirname $drotatefilepath)
-      echo $dir (flat)
+      echo "$dir (flat)"
     done < $SEARCHLISTFLAT
     while IFS= read -r -d '' drotatefilepath; do
       dir=$(dirname $drotatefilepath)
