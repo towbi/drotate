@@ -18,18 +18,16 @@ Otherwise the `-d' option is mandatory:
 
 .SH DESCRIPTION
 .B drotate
-recursively finds all files and directories in a given directory
-older than a certain number of days and archives and deletes
-(rotates) them.
-It can be used to archive regularly accumulating files that
-don't need to be in direct access forever and can be archived
-after some time.
+finds all files and directories in a given directory older than
+a certain number of days and marked by a dotfile and then archives
+and deletes (rotates) them. It can be used to archive regularly
+accumulating files that don't need to be in direct access forever
+and can be archived after some time.
 .PP
 .B drotate
-can be automatically called on a daily/weekly/monthly basis
-but the rotation will only happen when the last rotation dates
-back a given amount of days. This prevents the creation of
-many small archives and allows periodic execution via cron.
+can be periodically called on a daily/weekly/monthly basis but
+rotation will only be performed when the last rotation dates
+back a given amount of days.
 .SH OPTIONS
 Everything can be configured in a configuration file. The only
 mandatory parameter is the name of the directory
@@ -81,10 +79,6 @@ terminate if an archive already exists.
 .IP \-F
 forces execution, even if necessary waiting time has not yet been
 reached.
-.IP \-s
-prevents
-.B drotate
-from descending into subdirectories
 .IP \-h
 displays help information. Verbosity can be increased by
 using the `-v' switch.
@@ -141,9 +135,6 @@ keeps archived files instead of deleting them
 .TP
 .B MULTPLEX
 puts drotate in multiplex mode, see `-m' above
-.TP
-.B DESCEND
-whether to descend into subdirectories
 .TP
 .B OVERWRITE
 switch to overwrite an existing archive
