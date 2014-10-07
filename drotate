@@ -86,7 +86,6 @@ usage ()
   echo "    -d DIR      Rotate files in DIR"
   echo "    -h          Show help (more help with -v)"
   echo "    -c FILE     Read configuration from FILE instead of '$CONFIG'" | $FOLD
-  echo "    -m FILE     Read FILE which holds a list of drotate configuration files" | $FOLD
   echo "    -v          Be verbose (can be supplied multiple times to increase verbosity)" | $FOLD
   echo "    -n          Don't actually rotate, just show what would be done (implies -v)" | $FOLD
   echo "    -k          Keep archived files, don't delete them"
@@ -428,7 +427,7 @@ delete_archived ()
 # end of functions; program starts here
 #
 
-valid_options="hvnkfFpgi:d:o:a:c:m:"
+valid_options="hvnkfFpgi:d:o:a:c:"
 
 # pase verbose flag first
 while OPTERR=1 getopts ":$valid_options" OPTS; do
@@ -497,8 +496,6 @@ while getopts $valid_options OPTS; do
          quit 1
        fi
        ;;
-    m) MULTIPLEX=$OPTARG
-       ;;
     F) FORCE=1
        ;;
     *) JUSTSHOWHELP=1
@@ -512,24 +509,6 @@ done
 
 if [ "$JUSTSHOWHELP" -eq 1 ]; then
   usage && quit
-fi
-
-# multiplex mode
-if [ ! -z "$MULTIPLEX" ]; then
-  if [ ! -r "$MULTIPLEX" ]; then
-    warn "ERROR: Unable to open multiplex configuration file '$MULTIPLEX'."
-    quit 1
-  fi
-  while read CFGFILE; do
-    if [ -r $CFGFILE ]; then
-      echo ">>> drotate multiplexing: processing '$CFGFILE'..."
-      if ! $NAME -c $CFGFILE; then ERROR=1; fi
-      echo
-    else
-      warn "ERROR: Multiplexing: Unable to read config file '$CFGFILE'.\n"
-    fi
-  done < $MULTIPLEX
-  quit $ERROR # multiplex mode ignores any other configuration
 fi
 
 if [ -z "$DIR" ]; then

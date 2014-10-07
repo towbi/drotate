@@ -64,10 +64,6 @@ determining the age of a file.
 prepends the hostname to the archive filename.
 .IP \-c\ file
 reads an alternate/additional configuration file.
-.IP \-m\ file
-multiplex mode: reads given file which holds a list of drotate
-configuration files and starts a drotate instance for each one
-of them. drotate ignores any command line configuration in this mode.
 .IP \-n
 performs a dry run, i.e. doesn't touch
 anything and just to shows what would be done.
@@ -132,9 +128,6 @@ anything and just to show what would be done.
 .TP
 .B KEEP
 keeps archived files instead of deleting them
-.TP
-.B MULTPLEX
-puts drotate in multiplex mode, see `-m' above
 .TP
 .B OVERWRITE
 switch to overwrite an existing archive
