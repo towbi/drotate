@@ -26,6 +26,8 @@ NAME='drotate'
 VERSION='2.0.1-alpha'
 : ${PWD:=$(pwd)} # set PWD if unset, using pwd command
 STARTDIR="$PWD"
+FILENUM=0
+DIRNUM=0
 
 # some defaults
 VERBOSE=0
@@ -34,13 +36,12 @@ ACCESS=0
 OVERWRITE=0
 PREPEND=0
 KEEP=0
-CUSTOMARCH=0
 JUSTSHOWHELP=0
 FORCE=0
 FIRSTRUN=0
 
 CONFIG="~/.$NAME.conf"
-ARCHDIR="$PWD"
+ARCHDIR="old"
 LASTROTATEFILE=".last$NAME"
 DROTATEFILE=".$NAME"
 DROTATEFILEPLUS=".$NAME+"
@@ -89,8 +90,7 @@ usage ()
   echo "    -v          Be verbose (can be supplied multiple times to increase verbosity)" | $FOLD
   echo "    -n          Don't actually rotate, just show what would be done (implies -v)" | $FOLD
   echo "    -k          Keep archived files, don't delete them"
-  echo "    -o DIR      Name of subdirectory to place the archive in (instead of current directory)" | $FOLD
-  echo "    -a ARCH     Use ARCH as filename for archive"
+  echo "    -o DIR      Name of subdirectory to place the archive in (default '$ARCHDIR')" | $FOLD
   echo "    -i INTRVL   Set the interval to INTRVL (instead of $INTERVAL)" | $FOLD
   echo "    -g          Check access time instead of modification time"
   echo "    -f          Overwrite an existing archive"
@@ -154,6 +154,14 @@ quit ()
     vvecho "Deleting search list '$SEARCHLISTDEEP' (deep).\n"
     rm "$SEARCHLISTDEEP"
   fi
+  if [ -e "$FILESTEMP" ]; then
+    vvecho "Deleting tempfile '$FILESTEMP' (file list).\n"
+    rm "$FILESTEMP"
+  fi
+  if [ -e "$DIRSTEMP" ]; then
+    vvecho "Deleting tempfile '$DIRSTEMP' (dir list).\n"
+    rm "$DIRSTEMP"
+  fi
   exit $1
 }
 
@@ -163,28 +171,28 @@ quit ()
 #   [HOSTNAME_]directory-path_YYYY-MM-DD_hh-mm.tar.gz
 build_archive_filename ()
 {
-  if [ -z "$ARCH" ]; then
-    # Replace every non-alphanumerical character with - and delete leading
-    # and trailing -'s
-    TMP=$(echo $DIR | tr -cs '[:alnum:]' '-' | sed 's/^-*//' | sed 's/-*$//')
-    TIMESTAMP="_$(date +'%Y-%m-%d_%H-%M')"
-  fi
+  local dir=$1
+
+  local tmp
+  local hostname
+  local timestamp
+
+  # Replace every non-alphanumerical character with - and delete leading
+  # and trailing -'s
+  tmp=$(echo $dir | tr -cs '[:alnum:]' '-' | sed 's/^-*//' | sed 's/-*$//')
+  timestamp="_$(date +'%Y-%m-%d_%H-%M')"
 
   if [ "$PREPEND" -eq 1 ]; then
-    HOSTNAME="$(hostname)_"
+    hostname="$(hostname)_"
     if [ $? != 0 ]; then
       warn "INFO: Unable to determine hostname; using 'host' as hostname."
-      HOSTNAME='host_'
+      hostname='host_'
     fi
   else
-    HOSTNAME=''
+    hostname=''
   fi
  
-  if [ -z "$ARCH" ]; then
-    echo "${HOSTNAME}${TMP}${TIMESTAMP}.tar.gz"
-  else
-    echo "${HOSTNAME}${ARCH}"
-  fi
+  echo "${hostname}${tmp}${timestamp}.tar.gz"
 }
 
 # normalize_dir DIR
@@ -200,13 +208,13 @@ normalize_dir ()
 # returns a relative path to ARCHDIR if it is a subdirectory of DIR
 maybe_relative_archdir ()
 {
-  DIR_LEN=${#1}
-  ARCHDIR_LEN=${#2}
-  ARCHDIR_PREFIX=${2:0:$DIR_LEN}
-  LEN_DELTA=$(( $ARCHDIR_LEN - $DIR_LEN ))
+  local dir_len=${#1}
+  local archdir_len=${#2}
+  local archdir_prefix=${2:0:$dir_len}
+  local len_delta=$(( $archdir_len - $dir_len ))
 
-  if [ "$ARCHDIR_PREFIX" = "$1" -a $LEN_DELTA -ge 0 ]; then
-    echo $(normalize_dir ./${2:$DIR_LEN:$LEN_DELTA})
+  if [ "$archdir_prefix" = "$1" -a $len_delta -ge 0 ]; then
+    echo $(normalize_dir ./${2:$dir_len:$len_delta})
   else
     echo $(normalize_dir $2)
   fi
@@ -217,10 +225,11 @@ maybe_relative_archdir ()
 # Checks exit code and quits if an error occurred
 check_exit ()
 {
-  EXITCODE=$?
-  NAME=$1
-  if [ $EXITCODE -ne 0 ]; then
-    warn "ERROR: $NAME finished with exit code $EXITCODE; can't continue."
+  local exitcode=$?
+  local name=$1
+
+  if [ $exitcode -ne 0 ]; then
+    warn "ERROR: $name finished with exit code $exitcode; can't continue."
     quit 2
   fi
 }
@@ -237,8 +246,8 @@ archive ()
     echo
   else
     if [ $FIRSTRUN -ne 1 ]; then
-      OLDDATE=$(date -r $LASTROTATEFILE +"%Y-%m-%d %k:%M:%S")
-      vecho "Last rotation was on $OLDDATE.\n"
+      olddate=$(date -r $LASTROTATEFILE +"%Y-%m-%d %k:%M:%S")
+      vecho "Last rotation was on $olddate.\n"
       ENOUGHTIMEPASSED=$(find $LASTROTATEFILE -mtime +$INTERVAL 2>/dev/null)
 
       if [ -z "$ENOUGHTIMEPASSED" -a $INTERVAL -ne 0 ]; then
@@ -265,7 +274,7 @@ archive ()
     fi
   fi
 
-  SANITIZED_ARCHDIR=$(maybe_relative_archdir "$DIR" "$ARCHDIR")
+  local sanitized_archdir=$(maybe_relative_archdir "$DIR" "$ARCHDIR")
 
   vecho "Creating lists of directories to rotate...\n"
   find . -type f -name "$DROTATEFILE" -printf "%P\0" > $SEARCHLISTFLAT
@@ -295,13 +304,15 @@ archive ()
     vecho "Finding all files $TEXTFILES in '$dir' (flat)...\n"
     find $dir -mindepth 1 \
          -maxdepth 1 \
-         ! -wholename "$SANITIZED_ARCHDIR/*" \
+         ! -wholename "$sanitized_archdir/*" \
          ! -name "$LASTROTATEFILE" \
          ! -name "$DROTATEFILE" \
+         ! -name "$DROTATEFILEPLUS" \
          ! -type d \
          $TIMETEST \
-         -printf "%p\0" >> $FILELIST
+         -printf "%p\0" > $FILESTEMP
     check_exit 'find'
+    cat $FILESTEMP >> $FILELIST
 
     # If we do not descend we can not clear files in subdirectories so
     # it really only makes sense to search for *empty* directories here
@@ -310,11 +321,14 @@ archive ()
          -maxdepth 1 \
          -depth \
          -empty \
-         ! -wholename "$SANITIZED_ARCHDIR/*" \
+         ! -wholename "$sanitized_archdir/*" \
          -type d \
          $TIMETEST \
-         -printf "%p\0" >> $DIRLIST
+         -printf "%p\0" > $DIRSTEMP
     check_exit 'find'
+    cat $DIRSTEMP >> $DIRLIST
+
+    exec_tar $dir $FILESTEMP $DIRSTEMP
 
   done < $SEARCHLISTFLAT
 
@@ -324,80 +338,113 @@ archive ()
 
     vecho "Finding all files $TEXTFILES in '$dir' (deep)...\n"
     find $dir -mindepth 1 \
-         ! -wholename "$SANITIZED_ARCHDIR/*" \
+         ! -wholename "$sanitized_archdir/*" \
          ! -name "$LASTROTATEFILE" \
          ! -name "$DROTATEFILE" \
+         ! -name "$DROTATEFILEPLUS" \
          ! -type d \
          $TIMETEST \
-         -printf "%p\0" >> $FILELIST
+         -printf "%p\0" >> $FILESTEMP
     check_exit 'find'
+    cat $FILESTEMP >> $FILELIST
 
     vecho "Finding all directories $TEXTDIRS in '$dir' (deep)...\n"
     find $dir -mindepth 1 \
          -depth \
-         ! -wholename "$SANITIZED_ARCHDIR/*" \
+         ! -wholename "$sanitized_archdir/*" \
          -type d \
          $TIMETEST \
-         -printf "%p\0" >> $DIRLIST
+         -printf "%p\0" >> $DIRSTEMP
     check_exit 'find'
+    cat $DIRSTEMP >> $DIRLIST
+
+    exec_tar $dir $FILESTEMP $DIRSTEMP
+
   done < $SEARCHLISTDEEP
 
-  # get number of files and dirs to process
-  export FILENUM=$(tr \\000 \\n < $FILELIST | wc -l)
-  export DIRNUM=$(tr \\000 \\n < $DIRLIST | wc -l)
+  cd "$STARTDIR"
+}
 
-  if [ "$FILENUM" -eq 0 -a "$DIRNUM" -eq 0 ]; then
+exec_tar () {
+  local dir=$1
+  local filelist=$2
+  local dirlist=$3
+
+  echo filelist $filelist
+  echo dirlist $dirlist
+
+  # get number of files and dirs to process
+  local filenum=$(tr \\000 \\n < "$filelist" | wc -l)
+  local dirnum=$(tr \\000 \\n < "$dirlist" | wc -l)
+
+  if [ "$filenum" -eq 0 -a "$dirnum" -eq 0 ]; then
     echo "No files/directories older than $INTERVAL days found."
-    cd "$STARTDIR"
     return 0
   fi
 
   # output list and/or stats
   if [ $VERBOSE -ge 1 ]; then
-    echo "The following $FILENUM files will be archived and deleted:"
-    tr \\000 \\n < $FILELIST
+    echo "The following $filenum files will be archived and deleted:"
+    tr \\000 \\n < $filelist
     echo
-    echo "The following $DIRNUM directories will be archived and deleted:"
-    tr \\000 \\n < $DIRLIST
+    echo "The following $dirnum directories will be archived and deleted:"
+    tr \\000 \\n < $dirlist
     echo
-  else
-    echo "$FILENUM files and $DIRNUM directories will be archived and deleted."
   fi
 
-  # create archive
-  ARCH=$(build_archive_filename)
+  local archname=$(build_archive_filename $(canonical_dir_name $dir))
+  local archfile="$dir/$ARCHDIR/$archname"
 
-  if [ -e "$ARCHDIR/$ARCH" ]; then
+  if [ -e "$archfile" ]; then
     if [ $OVERWRITE -eq 1 ]; then
-      warn "Overwriting archive '$ARCH' ..."
+      warn "Overwriting archive '$archfile' ..."
     else
-      warn "Can't continue: file '$ARCH' already exists. Use the -f switch to overwrite it."
+      warn "Can't continue: file '$archfile' already exists. Use the -f switch to overwrite it."
       quit 3
     fi
   else
-    echo "Creating archive '$ARCH' ..." | $FOLD
+    echo "Creating archive '$archfile' ..." | $FOLD
+    mkdir -p $(dirname $archfile)
   fi
 
+  local tarexit=0;
   if [ $DRYRUN -ne 1 ]; then
     # When using tar's T option, one must not supply an empty list: I got
     # a segfault when doing that with some versions of tar
-    INCDIRLIST=''
-    INCFILELIST=''
-    if [ $DIRNUM -ne 0 ]; then
-      INCDIRLIST="--null -T ""$DIRLIST"""
+    local incfilelist=''
+    local incdirlist=''
+    if [ $dirnum -ne 0 ]; then
+      incdirlist="--null -T ""$dirlist"""
     fi
-    if [ $FILENUM -ne 0 ]; then
-      INCFILELIST="--null -T ""$FILELIST"""
+    if [ $filenum -ne 0 ]; then
+      incfilelist="--null -T ""$filelist"""
     fi
-    # The DIRLIST must be processed before the FILELIST; the --no-recursion
+    # The $dirlist must be processed before the $filelist; the --no-recursion
     # switch is needed to prevent duplicates
-    tar --no-recursion -czf "$ARCHDIR/$ARCH" $INCDIRLIST $INCFILELIST
-    TAREXIT=$?
+    tar --no-recursion -czf "$archfile" $incdirlist $incfilelist
+    tarexit=$?
   fi
 
-  cd "$STARTDIR"
+  FILENUM=$(( $FILENUM + $filenum ))
+  DIRNUM=$(( $DIRNUM + $dirnum ))
 
-  return $TAREXIT
+  return $tarexit
+}
+
+canonical_dir_name() {
+  local dir=$1
+
+  local dirname=$dir
+  case $dir in
+    ../*|*/..|*/../*|.|..)
+      local curdir=$(pwd)
+      cd $dir
+      dirname="${PWD:-$(pwd)}"
+      cd $curdir
+    ;;
+  esac
+
+  echo $dirname
 }
 
 # delete_archived
@@ -407,13 +454,13 @@ delete_archived ()
 {
   cd "$DIR"
 
-  if [ "$FILENUM" -gt 0 ]; then
+  if [ -n "$FILENUM" -a "$FILENUM" -gt 0 ]; then
     echo "Deleting $FILENUM files ..."
     if [ $DRYRUN -ne 1 ]; then
       cat $FILELIST | xargs -0 rm
     fi
   fi
-  if [ "$DIRNUM" -gt 0 ]; then
+  if [ -n "$DIRNUM" -a "$DIRNUM" -gt 0 ]; then
     echo "Deleting $DIRNUM directories ..."
     if [ $DRYRUN -ne 1 ]; then
       cat $DIRLIST | xargs -0 rmdir
@@ -484,9 +531,6 @@ while getopts $valid_options OPTS; do
        ;;
     o) ARCHDIR=$OPTARG
        ;;
-    a) CUSTOMARCH=1
-       ARCH=$OPTARG
-       ;;
     c) CONFIG=$OPTARG
        if [ -f $CONFIG ]; then
          vvecho "Reading config file '$CONFIG'.\n"
@@ -528,47 +572,18 @@ if [ ! -d "$DIR" ]; then
   warn "ERROR: Unable to open '$DIR'."
   quit 1
 fi
-if [ ! -d "$ARCHDIR" ]; then
-  warn "ERROR: Unable to open archive directory '$ARCHDIR'."
+
+# check whether ARCHDIR is a valid name
+if ! [[ $ARCHDIR =~ ^[a-zA-Z0-9_-]+$ ]]; then
+  warn "ERROR: ARCHDIR must only consist of alphanumerical chars plus - and _."
   quit 1
-fi
-
-# make $ARCHDIR absolute (needed in tar call above)
-case $ARCHDIR in
-  [!/]*)
-    vvecho "INFO: Translating '$ARCHDIR' to "
-    cd $ARCHDIR
-    ARCHDIR="${PWD:-$(pwd)}"
-    vvecho "'$ARCHDIR'.\n"
-    cd $STARTDIR
-  ;;
-esac
-
-# warn if custom archive filename already exists
-if [ "$CUSTOMARCH" -eq 1 -a -e "$ARCHDIR/$ARCH" ]; then
-  warn "INFO: Archive file '$ARCHDIR/$ARCH' already exists."
 fi
 
 #
 # MAIN PROGRAM
 #
 
-# Relative directory specification makes it hard to give the archive a
-# meaningful name. In these cases the canonical directory name is taken.
-case $DIR in
-  ../*|*/..|*/../*|.|..)
-    vvecho "INFO: Translating '$DIR' to "
-    cd $DIR
-    DIR="${PWD:-$(pwd)}"
-    vvecho "'$DIR'.\n"
-    cd $STARTDIR
-  ;;
-esac
-
-if [ "$DIR" == "$ARCHDIR" ]; then
-  warn "ERROR: Archive directory and directory to rotate must be different."
-  quit 1;
-fi
+DIR=$(canonical_dir_name $DIR)
 
 # create temporary files which later contain the list of files and
 # directories to be archived
@@ -580,6 +595,10 @@ SEARCHLISTFLAT=$(mktemp)
 check_exit 'mktemp'
 SEARCHLISTDEEP=$(mktemp)
 check_exit 'mktemp'
+FILESTEMP=$(mktemp)
+check_exit 'mktemp'
+DIRSTEMP=$(mktemp)
+check_exit 'mktemp'
 
 archive
 ARCHEXIT=$?
@@ -590,12 +609,10 @@ if [ $ARCHEXIT -eq 0 ]; then
   if [ "$DRYRUN" -ne 1 ]; then
     touch "$DIR/$LASTROTATEFILE"
   fi
-  if [ "$FILENUM" -gt 0 -o "$DIRNUM" -gt 0 ]; then
-    if [ $KEEP -eq 1 ]; then
-      echo "Keeping archived files."
-    else
-      delete_archived
-    fi
+  if [ $KEEP -eq 1 ]; then
+    echo "Keeping archived files."
+  else
+    delete_archived
   fi
   vecho "Rotation complete.\n"
 else
