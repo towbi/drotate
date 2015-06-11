@@ -75,7 +75,7 @@ usage ()
   echo
   echo "Usage: $NAME [options]"
   echo
-  vecho "$NAME version $VERSION, 2008-2014 Tobias Nissen <tn@movb.de>\n\n"
+  vecho "$NAME version $VERSION, 2008-2015 Tobias Nissen <tn@movb.de>\n\n"
   echo "$NAME archives all files and subdirectories older a defineable age and deletes them. Subdirectories to consider need to be marked by placing a dotfile inside of them: $DROTATEFILE marks a directory which is to be processed flatly (i.e. no subdirectories will be considered) and $DROTATEFILEPLUS marks a directory which is to be processed deeply (i.e. subdirectories and files in them will be considered)." | $FOLD
   echo
   vecho "$NAME does not run unless a certain number of days (default: $INTERVAL) have passed since its last execution. $NAME can hence be periodically executed without producing an archive for each run." | $FOLD
