@@ -49,6 +49,7 @@ INTERVAL=150 # number of days that must have passed since last rotation
 
 FOLDCMD='fold'
 GETCOLUMNSCMD='tput cols'
+TEMPFILES=$(mktemp) # holds list of all temporary files
 
 #
 # FUNCTIONS
@@ -138,30 +139,17 @@ warn () {
 quit ()
 {
   cd $STARTDIR
-  if [ -e "$FILELIST" ]; then
-    vvecho "Deleting file list '$FILELIST'.\n"
-    rm "$FILELIST"
+
+  if [ -e "$TEMPFILES" -a -s "$TEMPFILES" ]; then
+    vvecho "Deleting tempfiles "
+    while read file; do
+      vvecho "$file "
+      rm "$file"
+    done < $TEMPFILES
+    rm $TEMPFILES
+    vvecho "done.\n"
   fi
-  if [ -e "$DIRLIST" ]; then
-    vvecho "Deleting directory list '$DIRLIST'.\n"
-    rm "$DIRLIST"
-  fi
-  if [ -e "$SEARCHLISTFLAT" ]; then
-    vvecho "Deleting search list '$SEARCHLISTFLAT' (flat).\n"
-    rm "$SEARCHLISTFLAT"
-  fi
-  if [ -e "$SEARCHLISTDEEP" ]; then
-    vvecho "Deleting search list '$SEARCHLISTDEEP' (deep).\n"
-    rm "$SEARCHLISTDEEP"
-  fi
-  if [ -e "$FILESTEMP" ]; then
-    vvecho "Deleting tempfile '$FILESTEMP' (file list).\n"
-    rm "$FILESTEMP"
-  fi
-  if [ -e "$DIRSTEMP" ]; then
-    vvecho "Deleting tempfile '$DIRSTEMP' (dir list).\n"
-    rm "$DIRSTEMP"
-  fi
+
   exit $1
 }
 
@@ -220,6 +208,12 @@ maybe_relative_archdir ()
   fi
 }
 
+get_new_tempfile() {
+    tempfile=$(mktemp)
+    echo $tempfile >> $TEMPFILES
+    echo $tempfile
+}
+
 # check_exit
 #
 # Checks exit code and quits if an error occurred
@@ -263,7 +257,10 @@ archive ()
     fi
   fi
 
+  #
   # create list
+  #
+
   if [ "$INTERVAL" -ne 0 ]; then
     TEXTFILES="older than $INTERVAL days"
     TEXTDIRS="older than $INTERVAL days"
@@ -275,27 +272,32 @@ archive ()
   fi
 
   local sanitized_archdir=$(maybe_relative_archdir "$DIR" "$ARCHDIR")
+  local searchlistflat=$(get_new_tempfile)
+  local searchlistdeep=$(get_new_tempfile)
 
   vecho "Creating lists of directories to rotate...\n"
-  find . -type f -name "$DROTATEFILE" -printf "%P\0" > $SEARCHLISTFLAT
+  find . -type f -name "$DROTATEFILE" -printf "%P\0" > $searchlistflat
   check_exit 'find'
-  find . -type f -name "$DROTATEFILEPLUS" -printf "%P\0" > $SEARCHLISTDEEP
+  find . -type f -name "$DROTATEFILEPLUS" -printf "%P\0" > $searchlistdeep
   check_exit 'find'
 
   if [ $VERBOSE -gt 0 ]; then
     while IFS= read -r -d '' drotatefilepath; do
       dir=$(dirname $drotatefilepath)
       echo "$dir (flat)"
-    done < $SEARCHLISTFLAT
+    done < $searchlistflat
     while IFS= read -r -d '' drotatefilepath; do
       dir=$(dirname $drotatefilepath)
       echo "$dir (deep)"
-    done < $SEARCHLISTDEEP
+    done < $searchlistdeep
   fi
 
   #
   # loop through dirs marked for rotation and find files/dirs to rotate
   #
+
+  local filestemp=$(get_new_tempfile)
+  local dirstemp=$(get_new_tempfile)
 
   # flat
   while IFS= read -r -d '' drotatefilepath; do
@@ -310,9 +312,9 @@ archive ()
          ! -name "$DROTATEFILEPLUS" \
          ! -type d \
          $TIMETEST \
-         -printf "%p\0" > $FILESTEMP
+         -printf "%p\0" > $filestemp
     check_exit 'find'
-    cat $FILESTEMP >> $FILELIST
+    cat $filestemp >> $FILELIST
 
     # If we do not descend we can not clear files in subdirectories so
     # it really only makes sense to search for *empty* directories here
@@ -324,13 +326,13 @@ archive ()
          ! -wholename "$sanitized_archdir/*" \
          -type d \
          $TIMETEST \
-         -printf "%p\0" > $DIRSTEMP
+         -printf "%p\0" > $dirstemp
     check_exit 'find'
-    cat $DIRSTEMP >> $DIRLIST
+    cat $dirstemp >> $DIRLIST
 
-    exec_tar $dir $FILESTEMP $DIRSTEMP
+    exec_tar $dir $filestemp $dirstemp
 
-  done < $SEARCHLISTFLAT
+  done < $searchlistflat
 
   # deep
   while IFS= read -r -d '' drotatefilepath; do
@@ -344,9 +346,10 @@ archive ()
          ! -name "$DROTATEFILEPLUS" \
          ! -type d \
          $TIMETEST \
-         -printf "%p\0" >> $FILESTEMP
+         -printf "%p\0" > $filestemp
+
     check_exit 'find'
-    cat $FILESTEMP >> $FILELIST
+    cat $filestemp >> $FILELIST
 
     vecho "Finding all directories $TEXTDIRS in '$dir' (deep)...\n"
     find $dir -mindepth 1 \
@@ -354,13 +357,13 @@ archive ()
          ! -wholename "$sanitized_archdir/*" \
          -type d \
          $TIMETEST \
-         -printf "%p\0" >> $DIRSTEMP
+         -printf "%p\0" > $dirstemp
     check_exit 'find'
-    cat $DIRSTEMP >> $DIRLIST
+    cat $dirstemp >> $DIRLIST
 
-    exec_tar $dir $FILESTEMP $DIRSTEMP
+    exec_tar $dir $filestemp $dirstemp
 
-  done < $SEARCHLISTDEEP
+  done < $searchlistdeep
 
   cd "$STARTDIR"
 }
@@ -369,9 +372,6 @@ exec_tar () {
   local dir=$1
   local filelist=$2
   local dirlist=$3
-
-  echo filelist $filelist
-  echo dirlist $dirlist
 
   # get number of files and dirs to process
   local filenum=$(tr \\000 \\n < "$filelist" | wc -l)
@@ -403,7 +403,7 @@ exec_tar () {
       quit 3
     fi
   else
-    echo "Creating archive '$archfile' ..." | $FOLD
+    echo -e "Creating archive '$archfile' ...\n" | $FOLD
     mkdir -p $(dirname $archfile)
   fi
 
@@ -587,18 +587,10 @@ DIR=$(canonical_dir_name $DIR)
 
 # create temporary files which later contain the list of files and
 # directories to be archived
-FILELIST=$(mktemp)
-check_exit 'mktemp'
-DIRLIST=$(mktemp)
-check_exit 'mktemp'
-SEARCHLISTFLAT=$(mktemp)
-check_exit 'mktemp'
-SEARCHLISTDEEP=$(mktemp)
-check_exit 'mktemp'
-FILESTEMP=$(mktemp)
-check_exit 'mktemp'
-DIRSTEMP=$(mktemp)
-check_exit 'mktemp'
+FILELIST=$(get_new_tempfile)
+check_exit 'get_new_tempfile'
+DIRLIST=$(get_new_tempfile)
+check_exit 'get_new_tempfile'
 
 archive
 ARCHEXIT=$?
