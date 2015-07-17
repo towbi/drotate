@@ -60,78 +60,74 @@ TEMPFILES=$(mktemp) # holds list of all temporary files
 # nodigit STRING
 #
 # Returns 0 if STRING contains non-digit characters, 1 otherwise.
-nodigit ()
-{
-  [ $# -eq 1 ] || return 0
-  case $1 in
-    *[!0-9]*|"") return 0;;
-    *) return 1;;
-  esac
+nodigit () {
+    [ $# -eq 1 ] || return 0
+    case $1 in
+        *[!0-9]*|"") return 0;;
+        *) return 1;;
+    esac
 }
 
 # usage
 #
 # Prints out usage information
-usage ()
-{
-  echo
-  echo "Usage: $NAME [options]"
-  echo
-  vecho "$NAME version $VERSION, 2008-2015 Tobias Nissen <tn@movb.de>\n\n"
-  echo "$NAME archives all files and subdirectories older a defineable age and deletes them. Subdirectories to consider need to be marked by placing a dotfile inside of them: $DROTATEFILE marks a directory which is to be processed flatly (i.e. no subdirectories will be considered) and $DROTATEFILEPLUS marks a directory which is to be processed deeply (i.e. subdirectories and files in them will be considered)." | $FOLD
-  echo
-  vecho "$NAME does not run unless a certain number of days (default: $INTERVAL) have passed since its last execution. $NAME can hence be periodically executed without producing an archive for each run." | $FOLD
-  echo "$NAME's only mandatory parameter is a directory to run on, which can also be set in a config file." | $FOLD
-  vecho "The default archive file name consists of the directory name and the current timestamp.\n\n" | $FOLD
-  vecho "All parameters can be set in a config file. The order of command line arguments determines how a parameter is set. Example:\n\t$NAME -c drotate.conf -i 20\nNo matter how drotate.conf sets INTERVAL, the value 20 is used.\n" | $FOLD
+usage () {
+    echo
+    echo "Usage: $NAME [options]"
+    echo
+    vecho "$NAME version $VERSION, 2008-2015 Tobias Nissen <tn@movb.de>\n\n"
+    echo "$NAME archives all files and subdirectories older a defineable age and deletes them. Subdirectories to consider need to be marked by placing a dotfile inside of them: $DROTATEFILE marks a directory which is to be processed flatly (i.e. no subdirectories will be considered) and $DROTATEFILEPLUS marks a directory which is to be processed deeply (i.e. subdirectories and files in them will be considered)." | $FOLD
+    echo
+    vecho "$NAME does not run unless a certain number of days (default: $INTERVAL) have passed since its last execution. $NAME can hence be periodically executed without producing an archive for each run." | $FOLD
+    echo "$NAME's only mandatory parameter is a directory to run on, which can also be set in a config file." | $FOLD
+    vecho "The default archive file name consists of the directory name and the current timestamp.\n\n" | $FOLD
+    vecho "All parameters can be set in a config file. The order of command line arguments determines how a parameter is set. Example:\n\t$NAME -c drotate.conf -i 20\nNo matter how drotate.conf sets INTERVAL, the value 20 is used.\n" | $FOLD
 
-  echo
-  echo "Options:"
-  echo "    -d DIR      Rotate files in DIR"
-  echo "    -h          Show help (more help with -v)"
-  echo "    -c FILE     Read configuration from FILE instead of '$CONFIG'" | $FOLD
-  echo "    -v          Be verbose (can be supplied multiple times to increase verbosity)" | $FOLD
-  echo "    -n          Don't actually rotate, just show what would be done (implies -v)" | $FOLD
-  echo "    -k          Keep archived files, don't delete them"
-  echo "    -o DIR      Name of subdirectory to place the archive in (default '$ARCHDIR')" | $FOLD
-  echo "    -i INTRVL   Set the interval to INTRVL (instead of $INTERVAL)" | $FOLD
-  echo "    -m MAXAGE   Set the maximum file age to MAXAGE (instead of $MAXAGE)"
-  echo "    -g          Check access time instead of modification time"
-  echo "    -f          Overwrite an existing archive"
-  echo "    -p          Prepend hostname to archive filename"
-  echo "    -F          Force execution, even if less days have passed than needed"
-  echo
+    echo
+    echo "Options:"
+    echo "    -d DIR      Rotate files in DIR"
+    echo "    -h          Show help (more help with -v)"
+    echo "    -c FILE     Read configuration from FILE instead of '$CONFIG'" | $FOLD
+    echo "    -v          Be verbose (can be supplied multiple times to increase verbosity)" | $FOLD
+    echo "    -n          Don't actually rotate, just show what would be done (implies -v)" | $FOLD
+    echo "    -k          Keep archived files, don't delete them"
+    echo "    -o DIR      Name of subdirectory to place the archive in (default '$ARCHDIR')" | $FOLD
+    echo "    -i INTRVL   Set the interval to INTRVL (instead of $INTERVAL)" | $FOLD
+    echo "    -m MAXAGE   Set the maximum file age to MAXAGE (instead of $MAXAGE)"
+    echo "    -g          Check access time instead of modification time"
+    echo "    -f          Overwrite an existing archive"
+    echo "    -p          Prepend hostname to archive filename"
+    echo "    -F          Force execution, even if less days have passed than needed"
+    echo
 }
 
 # vecho MESSAGE
 #
 # echoes MESSAGE if $VERBOSE is 1 or higher
-vecho ()
-{
-  if [ $VERBOSE -ge 1 ]; then
-    printf "%b" "$*"
-  fi
+vecho () {
+    if [ $VERBOSE -ge 1 ]; then
+        printf "%b" "$*"
+    fi
 }
 
 # vvecho MESSAGE
 #
 # echoes MESSAGE if $VERBOSE is 2 or higher
-vvecho ()
-{
-  if [ $VERBOSE -ge 2 ]; then
-    printf "%b" "$*"
-  fi
+vvecho () {
+    if [ $VERBOSE -ge 2 ]; then
+        printf "%b" "$*"
+    fi
 }
 
 # warn MESSAGE
 #
 # prints (possibly line-wrapped) message to STDERR
 warn () {
-  if [ -z "$FOLD" ]; then
-    printf "%b\n" "$*" >&2
-  else
-    printf "%b\n" "$*" | $FOLD >&2
-  fi
+    if [ -z "$FOLD" ]; then
+        printf "%b\n" "$*" >&2
+    else
+        printf "%b\n" "$*" | $FOLD >&2
+    fi
 }
 
 
@@ -139,76 +135,72 @@ warn () {
 #
 # changes to original working dir, deletes temporary files and exits
 # with exit code EXITCODE
-quit ()
-{
-  cd $STARTDIR
+quit () {
+    cd $STARTDIR
 
-  if [ -e "$TEMPFILES" -a -s "$TEMPFILES" ]; then
-    vvecho "Deleting tempfiles "
-    while read file; do
-      vvecho "$file "
-      rm "$file"
-    done < $TEMPFILES
-    rm $TEMPFILES
-    vvecho "done.\n"
-  fi
+    if [ -e "$TEMPFILES" -a -s "$TEMPFILES" ]; then
+        vvecho "Deleting tempfiles "
+        while read file; do
+            vvecho "$file "
+            rm "$file"
+        done < $TEMPFILES
+        rm $TEMPFILES
+        vvecho "done.\n"
+    fi
 
-  exit $1
+    exit $1
 }
 
 # build_archive_filename DIR
 #
 # creates an intelligent filename for the archive of the form
 #   [HOSTNAME_]directory-path_YYYY-MM-DD_hh-mm.tar.gz
-build_archive_filename ()
-{
-  local dir=$1
+build_archive_filename () {
+    local dir=$1
 
-  local tmp
-  local hostname
-  local timestamp
+    local tmp
+    local hostname
+    local timestamp
 
-  # Replace every non-alphanumerical character with - and delete leading
-  # and trailing -'s
-  tmp=$(echo $dir | tr -cs '[:alnum:]' '-' | sed 's/^-*//' | sed 's/-*$//')
-  timestamp="_$(date +'%Y-%m-%d_%H-%M')"
+    # Replace every non-alphanumerical character with - and delete leading
+    # and trailing -'s
+    tmp=$(echo $dir | tr -cs '[:alnum:]' '-' | sed 's/^-*//' | sed 's/-*$//')
+    timestamp="_$(date +'%Y-%m-%d_%H-%M')"
 
-  if [ "$PREPEND" -eq 1 ]; then
-    hostname="$(hostname)_"
-    if [ $? != 0 ]; then
-      warn "INFO: Unable to determine hostname; using 'host' as hostname."
-      hostname='host_'
+    if [ "$PREPEND" -eq 1 ]; then
+        hostname="$(hostname)_"
+        if [ $? != 0 ]; then
+            warn "INFO: Unable to determine hostname; using 'host' as hostname."
+            hostname='host_'
+        fi
+    else
+        hostname=''
     fi
-  else
-    hostname=''
-  fi
- 
-  echo "${hostname}${tmp}${timestamp}.tar.gz"
+
+    echo "${hostname}${tmp}${timestamp}.tar.gz"
 }
 
 # normalize_dir DIR
 #
 # removes slash at the end and multiple slashes within a directory string
-normalize_dir ()
-{
-  echo $1 | sed 's|/\+|/|g' | sed 's|/$||'
+normalize_dir () {
+    echo $1 | sed 's|/\+|/|g' | sed 's|/$||'
 }
 
 # maybe_relative_archdir DIR ARCHDIR
 #
 # returns a relative path to ARCHDIR if it is a subdirectory of DIR
-maybe_relative_archdir ()
-{
-  local dir_len=${#1}
-  local archdir_len=${#2}
-  local archdir_prefix=${2:0:$dir_len}
-  local len_delta=$(( $archdir_len - $dir_len ))
+maybe_relative_archdir () {
+    local dir_len=${#1}
+    local archdir_len=${#2}
+    local archdir_prefix=${2:0:$dir_len}
+    local len_delta=$(( $archdir_len - $dir_len ))
 
-  if [ "$archdir_prefix" = "$1" -a $len_delta -ge 0 ]; then
-    echo $(normalize_dir ./${2:$dir_len:$len_delta})
-  else
-    echo $(normalize_dir $2)
-  fi
+    if [ "$archdir_prefix" = "$1" -a $len_delta -ge 0 ]; then
+        echo $(normalize_dir ./${2:$dir_len:$len_delta})
+    else
+        echo $(normalize_dir $2)
+    fi
 }
 
 get_new_tempfile() {
@@ -220,264 +212,261 @@ get_new_tempfile() {
 # check_exit
 #
 # Checks exit code and quits if an error occurred
-check_exit ()
-{
-  local exitcode=$?
-  local name=$1
+check_exit () {
+    local exitcode=$?
+    local name=$1
 
-  if [ $exitcode -ne 0 ]; then
-    warn "ERROR: $name finished with exit code $exitcode; can't continue."
-    quit 2
-  fi
+    if [ $exitcode -ne 0 ]; then
+        warn "ERROR: $name finished with exit code $exitcode; can't continue."
+        quit 2
+    fi
 }
 
 # archive
 #
 # performs archiving; returns 0 if everything worked as expected
-archive ()
-{
-  cd "$DIR"
+archive () {
+    cd "$DIR"
 
-  if [ ! -e "$LASTROTATEFILE" ]; then
-    warn "INFO: No status file found in '$DIR/$LASTROTATEFILE'; creating it when archiving was successful."
-    echo
-  else
-    if [ $FIRSTRUN -ne 1 ]; then
-      olddate=$(date -r $LASTROTATEFILE +"%Y-%m-%d %k:%M:%S")
-      vecho "Last rotation was on $olddate.\n"
-      ENOUGHTIMEPASSED=$(find $LASTROTATEFILE -mtime +$INTERVAL 2>/dev/null)
-
-      if [ -z "$ENOUGHTIMEPASSED" -a $INTERVAL -ne 0 ]; then
-        DELTA=$(( ( $(date -r $LASTROTATEFILE +"%s") + ( $INTERVAL * 24 * 60 * 60 ) - $(date +"%s") ) / 60 / 60 / 24 ))
-        if [ $FORCE -ne 0 ]; then
-            vecho "Forcing execution (not enough time passed since last rotation, we are $DELTA days early).\n" | $FOLD
-        else
-            vecho "Not enough time has passed since last rotation, wait $DELTA more days.\n"
-            cd "$STARTDIR"
-            return 1
-        fi
-      fi
-    fi
-  fi
-
-  #
-  # create list
-  #
-
-  if [ "$INTERVAL" -ne 0 ]; then
-    TEXTFILES="older than $INTERVAL days"
-    TEXTDIRS="older than $INTERVAL days"
-    if [ "$MAXAGE" -ne 0 ]; then
-      TEXTFILES="$TEXTFILES and younger than $MAXAGE days"
-      TEXTDIRS="$TEXTDIRS and younger than $MAXAGE days"
-    fi
-
-    if [ $ACCESS -eq 1 ]; then
-      if [ "$MAXAGE" -ne 0 ]; then MAXAGETEST="-atime -$MAXAGE"; fi
-      TIMETEST="-atime +$INTERVAL $MAXAGETEST"
+    if [ ! -e "$LASTROTATEFILE" ]; then
+        warn "INFO: No status file found in '$DIR/$LASTROTATEFILE'; creating it when archiving was successful."
+        echo
     else
-      if [ "$MAXAGE" -ne 0 ]; then MAXAGETEST="-mtime -$MAXAGE"; fi
-      TIMETEST="-mtime +$INTERVAL $MAXAGETEST"
+        if [ $FIRSTRUN -ne 1 ]; then
+            olddate=$(date -r $LASTROTATEFILE +"%Y-%m-%d %k:%M:%S")
+            vecho "Last rotation was on $olddate.\n"
+            ENOUGHTIMEPASSED=$(find $LASTROTATEFILE -mtime +$INTERVAL 2>/dev/null)
+
+            if [ -z "$ENOUGHTIMEPASSED" -a $INTERVAL -ne 0 ]; then
+                DELTA=$(( ( $(date -r $LASTROTATEFILE +"%s") + ( $INTERVAL * 24 * 60 * 60 ) - $(date +"%s") ) / 60 / 60 / 24 ))
+                if [ $FORCE -ne 0 ]; then
+                    vecho "Forcing execution (not enough time passed since last rotation, we are $DELTA days early).\n" | $FOLD
+                else
+                    vecho "Not enough time has passed since last rotation, wait $DELTA more days.\n"
+                    cd "$STARTDIR"
+                    return 1
+                fi
+            fi
+        fi
     fi
-  fi
 
-  local sanitized_archdir=$(maybe_relative_archdir "$DIR" "$ARCHDIR")
-  local searchlistflat=$(get_new_tempfile)
-  local searchlistdeep=$(get_new_tempfile)
+    #
+    # create list
+    #
 
-  vecho "Creating lists of directories to rotate...\n"
-  find . -type f -name "$DROTATEFILE" -printf "%P\0" > $searchlistflat
-  check_exit 'find'
-  find . -type f -name "$DROTATEFILEPLUS" -printf "%P\0" > $searchlistdeep
-  check_exit 'find'
+    if [ "$INTERVAL" -ne 0 ]; then
+        TEXTFILES="older than $INTERVAL days"
+        TEXTDIRS="older than $INTERVAL days"
+        if [ "$MAXAGE" -ne 0 ]; then
+            TEXTFILES="$TEXTFILES and younger than $MAXAGE days"
+            TEXTDIRS="$TEXTDIRS and younger than $MAXAGE days"
+        fi
 
-  if [ $VERBOSE -gt 0 ]; then
+        if [ $ACCESS -eq 1 ]; then
+            if [ "$MAXAGE" -ne 0 ]; then MAXAGETEST="-atime -$MAXAGE"; fi
+            TIMETEST="-atime +$INTERVAL $MAXAGETEST"
+        else
+            if [ "$MAXAGE" -ne 0 ]; then MAXAGETEST="-mtime -$MAXAGE"; fi
+            TIMETEST="-mtime +$INTERVAL $MAXAGETEST"
+        fi
+    fi
+
+    local sanitized_archdir=$(maybe_relative_archdir "$DIR" "$ARCHDIR")
+    local searchlistflat=$(get_new_tempfile)
+    local searchlistdeep=$(get_new_tempfile)
+
+    vecho "Creating lists of directories to rotate...\n"
+    find . -type f -name "$DROTATEFILE" -printf "%P\0" > $searchlistflat
+    check_exit 'find'
+    find . -type f -name "$DROTATEFILEPLUS" -printf "%P\0" > $searchlistdeep
+    check_exit 'find'
+
+    if [ $VERBOSE -gt 0 ]; then
+        while IFS= read -r -d '' drotatefilepath; do
+            dir=$(dirname $drotatefilepath)
+            echo "$dir (flat)"
+        done < $searchlistflat
+        while IFS= read -r -d '' drotatefilepath; do
+            dir=$(dirname $drotatefilepath)
+            echo "$dir (deep)"
+        done < $searchlistdeep
+    fi
+
+    #
+    # loop through dirs marked for rotation and find files/dirs to rotate
+    #
+
+    local filestemp=$(get_new_tempfile)
+    local dirstemp=$(get_new_tempfile)
+
+    # flat
     while IFS= read -r -d '' drotatefilepath; do
-      dir=$(dirname $drotatefilepath)
-      echo "$dir (flat)"
+        dir=$(dirname $drotatefilepath)
+
+        vecho "Finding all files $TEXTFILES in '$dir' (flat)...\n"
+        find $dir -mindepth 1 \
+            -maxdepth 1 \
+            ! -wholename "$sanitized_archdir/*" \
+            ! -name "$LASTROTATEFILE" \
+            ! -name "$DROTATEFILE" \
+            ! -name "$DROTATEFILEPLUS" \
+            ! -type d \
+            $TIMETEST \
+            -printf "%p\0" > $filestemp
+        check_exit 'find'
+        cat $filestemp >> $FILELIST
+
+        # If we do not descend we can not clear files in subdirectories so
+        # it really only makes sense to search for *empty* directories here
+        vecho "Finding all empty directories $TEXTDIRS in '$dir' (flat)...\n"
+        find $dir -mindepth 1 \
+            -maxdepth 1 \
+            -depth \
+            -empty \
+            ! -wholename "$sanitized_archdir/*" \
+            -type d \
+            $TIMETEST \
+            -printf "%p\0" > $dirstemp
+        check_exit 'find'
+        cat $dirstemp >> $DIRLIST
+
+        exec_tar $dir $filestemp $dirstemp
+
     done < $searchlistflat
+
+    # deep
     while IFS= read -r -d '' drotatefilepath; do
-      dir=$(dirname $drotatefilepath)
-      echo "$dir (deep)"
+        dir=$(dirname $drotatefilepath)
+
+        vecho "Finding all files $TEXTFILES in '$dir' (deep)...\n"
+        find $dir -mindepth 1 \
+            ! -wholename "$sanitized_archdir/*" \
+            ! -name "$LASTROTATEFILE" \
+            ! -name "$DROTATEFILE" \
+            ! -name "$DROTATEFILEPLUS" \
+            ! -type d \
+            $TIMETEST \
+            -printf "%p\0" > $filestemp
+
+        check_exit 'find'
+        cat $filestemp >> $FILELIST
+
+        vecho "Finding all directories $TEXTDIRS in '$dir' (deep)...\n"
+        find $dir -mindepth 1 \
+            -depth \
+            ! -wholename "$sanitized_archdir/*" \
+            -type d \
+            $TIMETEST \
+            -printf "%p\0" > $dirstemp
+        check_exit 'find'
+        cat $dirstemp >> $DIRLIST
+
+        exec_tar $dir $filestemp $dirstemp
+
     done < $searchlistdeep
-  fi
 
-  #
-  # loop through dirs marked for rotation and find files/dirs to rotate
-  #
-
-  local filestemp=$(get_new_tempfile)
-  local dirstemp=$(get_new_tempfile)
-
-  # flat
-  while IFS= read -r -d '' drotatefilepath; do
-    dir=$(dirname $drotatefilepath)
-
-    vecho "Finding all files $TEXTFILES in '$dir' (flat)...\n"
-    find $dir -mindepth 1 \
-         -maxdepth 1 \
-         ! -wholename "$sanitized_archdir/*" \
-         ! -name "$LASTROTATEFILE" \
-         ! -name "$DROTATEFILE" \
-         ! -name "$DROTATEFILEPLUS" \
-         ! -type d \
-         $TIMETEST \
-         -printf "%p\0" > $filestemp
-    check_exit 'find'
-    cat $filestemp >> $FILELIST
-
-    # If we do not descend we can not clear files in subdirectories so
-    # it really only makes sense to search for *empty* directories here
-    vecho "Finding all empty directories $TEXTDIRS in '$dir' (flat)...\n"
-    find $dir -mindepth 1 \
-         -maxdepth 1 \
-         -depth \
-         -empty \
-         ! -wholename "$sanitized_archdir/*" \
-         -type d \
-         $TIMETEST \
-         -printf "%p\0" > $dirstemp
-    check_exit 'find'
-    cat $dirstemp >> $DIRLIST
-
-    exec_tar $dir $filestemp $dirstemp
-
-  done < $searchlistflat
-
-  # deep
-  while IFS= read -r -d '' drotatefilepath; do
-    dir=$(dirname $drotatefilepath)
-
-    vecho "Finding all files $TEXTFILES in '$dir' (deep)...\n"
-    find $dir -mindepth 1 \
-         ! -wholename "$sanitized_archdir/*" \
-         ! -name "$LASTROTATEFILE" \
-         ! -name "$DROTATEFILE" \
-         ! -name "$DROTATEFILEPLUS" \
-         ! -type d \
-         $TIMETEST \
-         -printf "%p\0" > $filestemp
-
-    check_exit 'find'
-    cat $filestemp >> $FILELIST
-
-    vecho "Finding all directories $TEXTDIRS in '$dir' (deep)...\n"
-    find $dir -mindepth 1 \
-         -depth \
-         ! -wholename "$sanitized_archdir/*" \
-         -type d \
-         $TIMETEST \
-         -printf "%p\0" > $dirstemp
-    check_exit 'find'
-    cat $dirstemp >> $DIRLIST
-
-    exec_tar $dir $filestemp $dirstemp
-
-  done < $searchlistdeep
-
-  cd "$STARTDIR"
+    cd "$STARTDIR"
 }
 
 exec_tar () {
-  local dir=$1
-  local filelist=$2
-  local dirlist=$3
+    local dir=$1
+    local filelist=$2
+    local dirlist=$3
 
-  # get number of files and dirs to process
-  local filenum=$(tr \\000 \\n < "$filelist" | wc -l)
-  local dirnum=$(tr \\000 \\n < "$dirlist" | wc -l)
+    # get number of files and dirs to process
+    local filenum=$(tr \\000 \\n < "$filelist" | wc -l)
+    local dirnum=$(tr \\000 \\n < "$dirlist" | wc -l)
 
-  if [ "$filenum" -eq 0 -a "$dirnum" -eq 0 ]; then
-    echo "No files/directories older than $INTERVAL days found."
-    return 0
-  fi
+    if [ "$filenum" -eq 0 -a "$dirnum" -eq 0 ]; then
+        echo "No files/directories older than $INTERVAL days found."
+        return 0
+    fi
 
-  # output list and/or stats
-  if [ $VERBOSE -ge 1 ]; then
-    echo "The following $filenum files will be archived and deleted:"
-    tr \\000 \\n < $filelist
-    echo
-    echo "The following $dirnum directories will be archived and deleted:"
-    tr \\000 \\n < $dirlist
-    echo
-  fi
+    # output list and/or stats
+    if [ $VERBOSE -ge 1 ]; then
+        echo "The following $filenum files will be archived and deleted:"
+        tr \\000 \\n < $filelist
+        echo
+        echo "The following $dirnum directories will be archived and deleted:"
+        tr \\000 \\n < $dirlist
+        echo
+    fi
 
-  local archname=$(build_archive_filename $(canonical_dir_name $dir))
-  local archfile="$dir/$ARCHDIR/$archname"
+    local archname=$(build_archive_filename $(canonical_dir_name $dir))
+    local archfile="$dir/$ARCHDIR/$archname"
 
-  if [ -e "$archfile" ]; then
-    if [ $OVERWRITE -eq 1 ]; then
-      warn "Overwriting archive '$archfile' ..."
+    if [ -e "$archfile" ]; then
+        if [ $OVERWRITE -eq 1 ]; then
+            warn "Overwriting archive '$archfile' ..."
+        else
+            warn "Can't continue: file '$archfile' already exists. Use the -f switch to overwrite it."
+            quit 3
+        fi
     else
-      warn "Can't continue: file '$archfile' already exists. Use the -f switch to overwrite it."
-      quit 3
+        echo -e "Creating archive '$archfile' ...\n" | $FOLD
+        mkdir -p $(dirname $archfile)
     fi
-  else
-    echo -e "Creating archive '$archfile' ...\n" | $FOLD
-    mkdir -p $(dirname $archfile)
-  fi
 
-  local tarexit=0;
-  if [ $DRYRUN -ne 1 ]; then
-    # When using tar's T option, one must not supply an empty list: I got
-    # a segfault when doing that with some versions of tar
-    local incfilelist=''
-    local incdirlist=''
-    if [ $dirnum -ne 0 ]; then
-      incdirlist="--null -T ""$dirlist"""
+    local tarexit=0;
+    if [ $DRYRUN -ne 1 ]; then
+        # When using tar's T option, one must not supply an empty list: I got
+        # a segfault when doing that with some versions of tar
+        local incfilelist=''
+        local incdirlist=''
+        if [ $dirnum -ne 0 ]; then
+            incdirlist="--null -T ""$dirlist"""
+        fi
+        if [ $filenum -ne 0 ]; then
+            incfilelist="--null -T ""$filelist"""
+        fi
+        # The $dirlist must be processed before the $filelist; the --no-recursion
+        # switch is needed to prevent duplicates
+        tar --no-recursion -czf "$archfile" $incdirlist $incfilelist
+        tarexit=$?
     fi
-    if [ $filenum -ne 0 ]; then
-      incfilelist="--null -T ""$filelist"""
-    fi
-    # The $dirlist must be processed before the $filelist; the --no-recursion
-    # switch is needed to prevent duplicates
-    tar --no-recursion -czf "$archfile" $incdirlist $incfilelist
-    tarexit=$?
-  fi
 
-  FILENUM=$(( $FILENUM + $filenum ))
-  DIRNUM=$(( $DIRNUM + $dirnum ))
+    FILENUM=$(( $FILENUM + $filenum ))
+    DIRNUM=$(( $DIRNUM + $dirnum ))
 
-  return $tarexit
+    return $tarexit
 }
 
 canonical_dir_name() {
-  local dir=$1
+    local dir=$1
 
-  local dirname=$dir
-  case $dir in
-    ../*|*/..|*/../*|.|..)
-      local curdir=$(pwd)
-      cd $dir
-      dirname="${PWD:-$(pwd)}"
-      cd $curdir
-    ;;
-  esac
+    local dirname=$dir
+    case $dir in
+        ../*|*/..|*/../*|.|..)
+            local curdir=$(pwd)
+            cd $dir
+            dirname="${PWD:-$(pwd)}"
+            cd $curdir
+            ;;
+    esac
 
-  echo $dirname
+    echo $dirname
 }
 
 # delete_archived
 #
 # Deletes all files listed in FILELIST and all dirs listes in DIRLIST
-delete_archived ()
-{
-  cd "$DIR"
+delete_archived () {
+    cd "$DIR"
 
-  if [ -n "$FILENUM" -a "$FILENUM" -gt 0 ]; then
-    echo "Deleting $FILENUM files ..."
-    if [ $DRYRUN -ne 1 ]; then
-      cat $FILELIST | xargs -0 rm
+    if [ -n "$FILENUM" -a "$FILENUM" -gt 0 ]; then
+        echo "Deleting $FILENUM files ..."
+        if [ $DRYRUN -ne 1 ]; then
+            cat $FILELIST | xargs -0 rm
+        fi
     fi
-  fi
-  if [ -n "$DIRNUM" -a "$DIRNUM" -gt 0 ]; then
-    echo "Deleting $DIRNUM directories ..."
-    if [ $DRYRUN -ne 1 ]; then
-      cat $DIRLIST | xargs -0 rmdir
+    if [ -n "$DIRNUM" -a "$DIRNUM" -gt 0 ]; then
+        echo "Deleting $DIRNUM directories ..."
+        if [ $DRYRUN -ne 1 ]; then
+            cat $DIRLIST | xargs -0 rmdir
+        fi
     fi
-  fi
 
-  cd "$STARTDIR"
+    cd "$STARTDIR"
 }
 
 #
@@ -488,75 +477,75 @@ valid_options="hvnkfFpgi:d:o:a:c:m:"
 
 # pase verbose flag first
 while OPTERR=1 getopts ":$valid_options" OPTS; do
-  case $OPTS in
-    v) VERBOSE=$(( $VERBOSE+1 ))
-       ;;
-  esac
+    case $OPTS in
+        v) VERBOSE=$(( $VERBOSE+1 ))
+           ;;
+    esac
 done
 OPTIND=0 # rewind getopts' index
 
 vecho "$NAME $VERSION $(date +"%Y-%m-%d %H:%M:%S")\n\n"
 
 if command -v $GETCOLUMNSCMD >/dev/null; then
-  : ${COLUMNS:=$($GETCOLUMNSCMD)}
+    : ${COLUMNS:=$($GETCOLUMNSCMD)}
 fi
 if nodigit "$COLUMNS"; then
-  COLUMNS=78
-  vvecho "INFO: Error getting terminal width via '$GETCOLUMNSCMD' so I assume $COLUMNS columns.\n"
+    COLUMNS=78
+    vvecho "INFO: Error getting terminal width via '$GETCOLUMNSCMD' so I assume $COLUMNS columns.\n"
 fi
 
 if command -v $FOLDCMD >/dev/null; then
-  FOLD="$FOLDCMD -sw $COLUMNS"
+    FOLD="$FOLDCMD -sw $COLUMNS"
 else
-  vvecho "INFO: '$FOLDCMD' doesn't exist, using plain 'cat' instead.\n"
-  FOLD=cat
+    vvecho "INFO: '$FOLDCMD' doesn't exist, using plain 'cat' instead.\n"
+    FOLD=cat
 fi
 
 # initially read config
 if [ -f $CONFIG ]; then
-  vvecho "Reading initial config file '$CONFIG'.\n"
-  source $CONFIG
+    vvecho "Reading initial config file '$CONFIG'.\n"
+    source $CONFIG
 fi
 
 # parse commandline arguments
 while getopts $valid_options OPTS; do
-  case $OPTS in
-    h) JUSTSHOWHELP=1;
-       ;;
-    v) ;;
-    n) DRYRUN=1
-       VERBOSE=$(( $VERBOSE+1 ))
-       ;;
-    k) KEEP=1
-       ;;
-    f) OVERWRITE=1
-       ;;
-    p) PREPEND=1
-       ;;
-    g) ACCESS=1
-       ;;
-    i) INTERVAL=$OPTARG
-       ;;
-    m) MAXAGE=$OPTARG
-       ;;
-    d) DIR=$OPTARG
-       ;;
-    o) ARCHDIR=$OPTARG
-       ;;
-    c) CONFIG=$OPTARG
-       if [ -f $CONFIG ]; then
-         vvecho "Reading config file '$CONFIG'.\n"
-         source $CONFIG
-       else
-         warn "ERROR: No configuration file found in '$CONFIG'."
-         quit 1
-       fi
-       ;;
-    F) FORCE=1
-       ;;
-    *) JUSTSHOWHELP=1
-       ;;
-  esac
+    case $OPTS in
+        h) JUSTSHOWHELP=1;
+           ;;
+        v) ;;
+        n) DRYRUN=1
+           VERBOSE=$(( $VERBOSE+1 ))
+           ;;
+        k) KEEP=1
+           ;;
+        f) OVERWRITE=1
+           ;;
+        p) PREPEND=1
+           ;;
+        g) ACCESS=1
+           ;;
+        i) INTERVAL=$OPTARG
+           ;;
+        m) MAXAGE=$OPTARG
+           ;;
+        d) DIR=$OPTARG
+           ;;
+        o) ARCHDIR=$OPTARG
+           ;;
+        c) CONFIG=$OPTARG
+           if [ -f $CONFIG ]; then
+               vvecho "Reading config file '$CONFIG'.\n"
+               source $CONFIG
+           else
+               warn "ERROR: No configuration file found in '$CONFIG'."
+               quit 1
+           fi
+           ;;
+        F) FORCE=1
+           ;;
+        *) JUSTSHOWHELP=1
+           ;;
+    esac
 done
 
 #
@@ -564,31 +553,31 @@ done
 #
 
 if [ "$JUSTSHOWHELP" -eq 1 ]; then
-  usage && quit
+    usage && quit
 fi
 
 if [ -z "$DIR" ]; then
-  warn "INFO: You have to provide a directory for archiving."
-  usage
-  quit 1
+    warn "INFO: You have to provide a directory for archiving."
+    usage
+    quit 1
 fi
 
 if nodigit "$INTERVAL"; then
-  warn "ERROR: '$INTERVAL' is not an integer."
-  usage
-  quit 1
+    warn "ERROR: '$INTERVAL' is not an integer."
+    usage
+    quit 1
 fi
 
 # quit if any directory is not accessible
 if [ ! -d "$DIR" ]; then
-  warn "ERROR: Unable to open '$DIR'."
-  quit 1
+    warn "ERROR: Unable to open '$DIR'."
+    quit 1
 fi
 
 # check whether ARCHDIR is a valid name
 if ! [[ $ARCHDIR =~ ^[a-zA-Z0-9_-]+$ ]]; then
-  warn "ERROR: ARCHDIR must only consist of alphanumerical chars plus - and _."
-  quit 1
+    warn "ERROR: ARCHDIR must only consist of alphanumerical chars plus - and _."
+    quit 1
 fi
 
 #
@@ -610,21 +599,21 @@ ARCHEXIT=$?
 # if archiving completed successfully, delete archived files/dirs and
 # complete rotation
 if [ $ARCHEXIT -eq 0 ]; then
-  if [ "$DRYRUN" -ne 1 ]; then
-    touch "$DIR/$LASTROTATEFILE"
-  fi
-  if [ $KEEP -eq 1 ]; then
-    echo "Keeping archived files."
-  else
-    delete_archived
-  fi
-  vecho "Rotation complete.\n"
+    if [ "$DRYRUN" -ne 1 ]; then
+        touch "$DIR/$LASTROTATEFILE"
+    fi
+    if [ $KEEP -eq 1 ]; then
+        echo "Keeping archived files."
+    else
+        delete_archived
+    fi
+    vecho "Rotation complete.\n"
 else
-  if [ "$ARCHEXIT" -ne 1 ]; then
-    warn "ERROR: Something went wrong during archiving so I don't delete anything."
-    quit 2
-  fi
-  # if $ARCHEXIT is 1 then not enough time passed since last rotation.
+    if [ "$ARCHEXIT" -ne 1 ]; then
+        warn "ERROR: Something went wrong during archiving so I don't delete anything."
+        quit 2
+    fi
+    # if $ARCHEXIT is 1 then not enough time passed since last rotation.
 fi
 
 quit
