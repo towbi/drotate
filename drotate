@@ -23,7 +23,7 @@
 # Recommends: tput, fold, hostname
 
 NAME='drotate'
-VERSION='2.0.2-alpha'
+VERSION='2.0.3-alpha'
 : ${PWD:=$(pwd)} # set PWD if unset, using pwd command
 STARTDIR="$PWD"
 FILENUM=0
