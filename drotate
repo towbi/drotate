@@ -46,6 +46,8 @@ LASTROTATEFILE=".last$NAME"
 DROTATEFILE=".$NAME"
 DROTATEFILEPLUS=".$NAME+"
 INTERVAL=150 # number of days that must have passed since last rotation
+MAXAGE=0 # maximum file age (in days) for files to be considered for rotation
+# MAXAGE=0 for no limit
 
 FOLDCMD='fold'
 GETCOLUMNSCMD='tput cols'
@@ -93,6 +95,7 @@ usage ()
   echo "    -k          Keep archived files, don't delete them"
   echo "    -o DIR      Name of subdirectory to place the archive in (default '$ARCHDIR')" | $FOLD
   echo "    -i INTRVL   Set the interval to INTRVL (instead of $INTERVAL)" | $FOLD
+  echo "    -m MAXAGE   Set the maximum file age to MAXAGE (instead of $MAXAGE)"
   echo "    -g          Check access time instead of modification time"
   echo "    -f          Overwrite an existing archive"
   echo "    -p          Prepend hostname to archive filename"
@@ -264,10 +267,17 @@ archive ()
   if [ "$INTERVAL" -ne 0 ]; then
     TEXTFILES="older than $INTERVAL days"
     TEXTDIRS="older than $INTERVAL days"
+    if [ "$MAXAGE" -ne 0 ]; then
+      TEXTFILES="$TEXTFILES and younger than $MAXAGE days"
+      TEXTDIRS="$TEXTDIRS and younger than $MAXAGE days"
+    fi
+
     if [ $ACCESS -eq 1 ]; then
-      TIMETEST="-atime +$INTERVAL"
+      if [ "$MAXAGE" -ne 0 ]; then MAXAGETEST="-atime -$MAXAGE"; fi
+      TIMETEST="-atime +$INTERVAL $MAXAGETEST"
     else
-      TIMETEST="-mtime +$INTERVAL"
+      if [ "$MAXAGE" -ne 0 ]; then MAXAGETEST="-mtime -$MAXAGE"; fi
+      TIMETEST="-mtime +$INTERVAL $MAXAGETEST"
     fi
   fi
 
@@ -474,7 +484,7 @@ delete_archived ()
 # end of functions; program starts here
 #
 
-valid_options="hvnkfFpgi:d:o:a:c:"
+valid_options="hvnkfFpgi:d:o:a:c:m:"
 
 # pase verbose flag first
 while OPTERR=1 getopts ":$valid_options" OPTS; do
@@ -526,6 +536,8 @@ while getopts $valid_options OPTS; do
     g) ACCESS=1
        ;;
     i) INTERVAL=$OPTARG
+       ;;
+    m) MAXAGE=$OPTARG
        ;;
     d) DIR=$OPTARG
        ;;
