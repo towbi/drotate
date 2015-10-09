@@ -306,7 +306,7 @@ archive () {
         vecho "Finding all files $TEXTFILES in '$dir' (flat)...\n"
         find $dir -mindepth 1 \
             -maxdepth 1 \
-            ! -wholename "$sanitized_archdir/*" \
+            ! -wholename "*/$sanitized_archdir/*" \
             ! -name "$LASTROTATEFILE" \
             ! -name "$DROTATEFILE" \
             ! -name "$DROTATEFILEPLUS" \
@@ -323,7 +323,7 @@ archive () {
             -maxdepth 1 \
             -depth \
             -empty \
-            ! -wholename "$sanitized_archdir/*" \
+            ! -wholename "*/$sanitized_archdir/*" \
             -type d \
             $TIMETEST \
             -printf "%p\0" > $dirstemp
@@ -340,7 +340,7 @@ archive () {
 
         vecho "Finding all files $TEXTFILES in '$dir' (deep)...\n"
         find $dir -mindepth 1 \
-            ! -wholename "$sanitized_archdir/*" \
+            ! -wholename "*/$sanitized_archdir/*" \
             ! -name "$LASTROTATEFILE" \
             ! -name "$DROTATEFILE" \
             ! -name "$DROTATEFILEPLUS" \
@@ -354,7 +354,7 @@ archive () {
         vecho "Finding all directories $TEXTDIRS in '$dir' (deep)...\n"
         find $dir -mindepth 1 \
             -depth \
-            ! -wholename "$sanitized_archdir/*" \
+            ! -wholename "*/$sanitized_archdir/*" \
             -type d \
             $TIMETEST \
             -printf "%p\0" > $dirstemp
