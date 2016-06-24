@@ -139,5 +139,5 @@ The availability of the following tools is optional but recommended:
 
 # AUTHOR
 
-Tobias Nissen <tn@movb.de>
+Tobias König <tn@movb.de>
 

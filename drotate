@@ -2,7 +2,8 @@
 #
 # drotate - archives and deletes files older a given age
 #
-# Copyright 2008-2015 Tobias Mahnke-Nissen <tn@movb.de>
+# Copyright 2016 Tobias König <tn@movb.de>
+# Copyright 2008-2016 Tobias Mahnke-Nissen <tn@movb.de>
 #
 #   This program is free software: you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
@@ -75,7 +76,7 @@ usage () {
     echo
     echo "Usage: $NAME [options]"
     echo
-    vecho "$NAME version $VERSION, 2008-2015 Tobias Nissen <tn@movb.de>\n\n"
+    vecho "$NAME version $VERSION, 2016 Tobias König <tn@movb.de>\n\n"
     echo "$NAME archives all files and subdirectories older a defineable age and deletes them. Subdirectories to consider need to be marked by placing a dotfile inside of them: $DROTATEFILE marks a directory which is to be processed flatly (i.e. no subdirectories will be considered) and $DROTATEFILEPLUS marks a directory which is to be processed deeply (i.e. subdirectories and files in them will be considered)." | $FOLD
     echo
     vecho "$NAME does not run unless a certain number of days (default: $INTERVAL) have passed since its last execution. $NAME can hence be periodically executed without producing an archive for each run." | $FOLD

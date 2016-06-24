@@ -55,7 +55,7 @@ This is what a first run on a directory without subdirectories can look like:
 
 ## License
 
-*drotate*, Copyright (C) 2008-2013 Tobias M.-Nissen <tn@movb.de>
+*drotate*, Copyright (C) 2008-2016 Tobias M.-Nissen <tn@movb.de>, 2016 Tobias König <tn@movb.de>
 
 *drotate* is free software: you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free
