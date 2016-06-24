@@ -155,18 +155,19 @@ quit () {
 # build_archive_filename DIR
 #
 # creates an intelligent filename for the archive of the form
-#   [HOSTNAME_]directory-path_YYYY-MM-DD_hh-mm.tar.gz
+#   [HOSTNAME_]directory-path_YYYY-MM-DD_hh-mm_iFROM-TO.tar.gz
 build_archive_filename () {
     local dir=$1
 
     local tmp
     local hostname
     local timestamp
+    local fromto
 
     # Replace every non-alphanumerical character with - and delete leading
     # and trailing -'s
     tmp=$(echo $dir | tr -cs '[:alnum:]' '-' | sed 's/^-*//' | sed 's/-*$//')
-    timestamp="_$(date +'%Y-%m-%d_%H-%M')"
+    timestamp=$(date +'%Y-%m-%d_%H-%M')
 
     if [ "$PREPEND" -eq 1 ]; then
         hostname="$(hostname)_"
@@ -178,7 +179,13 @@ build_archive_filename () {
         hostname=''
     fi
 
-    echo "${hostname}${tmp}${timestamp}.tar.gz"
+    if [ "$MAXAGE" -eq 0 ]; then
+        fromto="$INTERVAL-max"
+    else
+        fromto="$INTERVAL-$MAXAGE"
+    fi
+
+    echo "${hostname}${tmp}_${timestamp}_i${fromto}.tar.gz"
 }
 
 # normalize_dir DIR
